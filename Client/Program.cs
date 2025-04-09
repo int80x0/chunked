@@ -190,7 +190,7 @@ internal abstract partial class Program
         }
         catch (Exception ex)
         {
-            // Catch any unhandled exceptions and log them
+            
             Console.WriteLine($"CRITICAL ERROR: {ex.Message}");
             Console.WriteLine(ex.StackTrace);
             
@@ -218,7 +218,7 @@ internal abstract partial class Program
                 return;
             }
             
-            // Standard messages
+            
             _logger?.Debug($"Message received: {message.Type} from {message.Sender}");
             AnsiConsole.MarkupLine($"[{Markup.Escape(message.Timestamp.ToString("HH:mm:ss"))}] [cyan]{Markup.Escape(message.Sender)}:[/] {Markup.Escape(message.Content)}");
         }

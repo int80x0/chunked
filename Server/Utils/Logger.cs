@@ -13,7 +13,7 @@ namespace Server.Utils
 
     public class Logger
     {
-        private readonly object _lock = new object();
+        private readonly Lock _lock = new();
         private readonly string _logFilePath;
         private readonly LogLevel _minLevel;
         private readonly bool _logToConsole;
@@ -55,14 +55,14 @@ namespace Server.Utils
                 }
             }
             
-            // Always print this diagnostic message regardless of settings
+            
             System.Console.WriteLine($"DIAGNOSTIC: Logger initialized with Level: {_minLevel}, Console: {_logToConsole}, File: {_logToFile}");
         }
         
-        // Property to check current log level
+        
         public LogLevel MinimumLevel => _minLevel;
         
-        // Properties to check logging targets
+        
         public bool LogToConsole => _logToConsole;
         public bool LogToFile => _logToFile;
 
@@ -116,7 +116,7 @@ namespace Server.Utils
 
         private void WriteToConsole(LogLevel level, string message)
         {
-            // Double-check that we should log to console
+            
             if (!_logToConsole) return;
             
             lock (_lock)
@@ -130,7 +130,7 @@ namespace Server.Utils
 
         private async Task WriteToFileAsync(string message)
         {
-            // Double-check that we should log to file
+            
             if (!_logToFile) return;
             
             try

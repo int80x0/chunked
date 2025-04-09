@@ -31,7 +31,7 @@ namespace Server.Server
             
             try
             {
-                // Welcome message or other initialization could be added here
+                
                 _logger.Debug($"Client {args.Username} connected successfully");
             }
             catch (Exception ex)

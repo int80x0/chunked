@@ -19,19 +19,19 @@ namespace LicenseSystem.Services
 
     public sealed class LicenseClient
     {
-        private TcpClient _client;
-        private NetworkStream _stream;
-        private StreamReader _reader;
-        private StreamWriter _writer;
+        private TcpClient _client = null!;
+        private NetworkStream _stream = null!;
+        private StreamReader _reader = null!;
+        private StreamWriter _writer = null!;
         private readonly string _serverAddress;
         private readonly int _serverPort;
         private CancellationTokenSource _cts;
-        private string _username;
-        private string _licenseKey;
+        private string _username = null!;
+        private string _licenseKey = null!;
         private readonly bool _isDebug;
 
-        public event EventHandler<MessageReceivedEventArgs> MessageReceived;
-        public event EventHandler<ConnectionStatusEventArgs> ConnectionStatusChanged;
+        public event EventHandler<MessageReceivedEventArgs> MessageReceived = null!;
+        public event EventHandler<ConnectionStatusEventArgs> ConnectionStatusChanged = null!;
 
         public bool IsConnected { get; private set; }
 
@@ -42,7 +42,6 @@ namespace LicenseSystem.Services
             IsConnected = false;
             _cts = new CancellationTokenSource();
             
-            // Determine if we're in debug mode
             #if DEBUG
             _isDebug = true;
             #else
@@ -230,7 +229,7 @@ namespace LicenseSystem.Services
             OnConnectionStatusChanged(false, "Disconnected from server.");
         }
 
-        public async Task SendMessageAsync(Message message)
+        private async Task SendMessageAsync(Message message)
         {
             LogDebug($"SendMessageAsync: Sending message of type {message.Type}");
 
@@ -361,7 +360,7 @@ namespace LicenseSystem.Services
             ConnectionStatusChanged?.Invoke(this, new ConnectionStatusEventArgs(isConnected, reason));
         }
         
-        // Logging methods that check debug mode
+        
         private void LogDebug(string message)
         {
             if (_isDebug)

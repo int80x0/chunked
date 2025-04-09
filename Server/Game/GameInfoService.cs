@@ -42,14 +42,14 @@ namespace Server.Game
         
         private static readonly TimeSpan CacheDuration = TimeSpan.FromDays(7);
         
-        // Zuordnungstabelle für gängige Spiele (alte ID -> IGDB ID)
+        
         private static readonly Dictionary<int, int> LegacyIdToIgdbId = new Dictionary<int, int>
         {
-            { 20952, 1020 },   // GTA V
-            { 2282, 1942 },    // The Witcher 3
-            { 1234, 472 },     // Fallout 4
-            { 5678, 121 }      // Minecraft
-            // Hier können weitere Mappings hinzugefügt werden
+            { 20952, 1020 },   
+            { 2282, 1942 },    
+            { 1234, 472 },     
+            { 5678, 121 }      
+            
         };
 
         public GameInfoService(IConfiguration config, Logger logger, IMemoryCache cache)
@@ -73,29 +73,29 @@ namespace Server.Game
             _logger.Info($"GameInfoService initialisiert. Cache-Verzeichnis: {_localCacheDir}");
         }
 
-        /// <summary>
-        /// Flexible Methode, die sowohl mit IDs als auch mit Spielnamen umgehen kann
-        /// </summary>
+        
+        
+        
         public async Task<GameInfo> GetGameInfoAsync(string nameOrId)
         {
-            // Versuche, den Input als ID zu parsen
+            
             if (int.TryParse(nameOrId, out int parsedId))
             {
                 return await GetGameInfoByIdAsync(parsedId);
             }
             else
             {
-                // Falls es keine ID ist, suche nach dem Namen
+                
                 return await GetGameInfoByNameAsync(nameOrId);
             }
         }
 
-        /// <summary>
-        /// Sucht ein Spiel anhand seiner ID (mit Legacy-ID-Unterstützung)
-        /// </summary>
+        
+        
+        
         public async Task<GameInfo> GetGameInfoByIdAsync(int gameId)
         {
-            // Prüfe, ob es sich um eine alte ID handelt und konvertiere sie
+            
             int igdbId = gameId;
             if (LegacyIdToIgdbId.TryGetValue(gameId, out int mappedId))
             {
@@ -103,7 +103,7 @@ namespace Server.Game
                 igdbId = mappedId;
             }
             
-            // Der restliche Prozess ist identisch, aber wir verwenden jetzt die IGDB ID
+            
             return await FetchAndCacheGameInfoAsync(igdbId.ToString(), async () =>
             {
                 await EnsureAccessTokenAsync();
@@ -111,9 +111,9 @@ namespace Server.Game
             });
         }
 
-        /// <summary>
-        /// Sucht ein Spiel anhand seines Namens
-        /// </summary>
+        
+        
+        
         public async Task<GameInfo> GetGameInfoByNameAsync(string gameName)
         {
             return await FetchAndCacheGameInfoAsync($"name_{gameName.ToLower()}", async () =>
@@ -125,14 +125,14 @@ namespace Server.Game
 
         private async Task<GameInfo> FetchAndCacheGameInfoAsync(string cacheKey, Func<Task<GameInfo>> fetchFunc)
         {
-            // Versuche, aus dem Memory-Cache zu laden
+            
             if (_cache.TryGetValue(cacheKey, out GameInfo cachedGame))
             {
                 _logger.Debug($"Spiel '{cacheKey}' aus Memory-Cache geladen.");
                 return cachedGame;
             }
             
-            // Versuche, aus dem lokalen Datei-Cache zu laden
+            
             string cacheFilePath = Path.Combine(_localCacheDir, $"{cacheKey}.json");
             if (File.Exists(cacheFilePath))
             {
@@ -154,7 +154,7 @@ namespace Server.Game
                 }
             }
             
-            // Wenn kein Cache verfügbar ist, rufe die API ab
+            
             try
             {
                 if (string.IsNullOrEmpty(_clientId) || string.IsNullOrEmpty(_clientSecret))
@@ -167,10 +167,10 @@ namespace Server.Game
                 
                 if (game != null)
                 {
-                    // Speichere im Memory-Cache
+                    
                     _cache.Set(cacheKey, game, CacheDuration);
                     
-                    // Speichere im lokalen Cache
+                    
                     string json = JsonSerializer.Serialize(game, new JsonSerializerOptions { WriteIndented = true });
                     await File.WriteAllTextAsync(cacheFilePath, json);
                     
@@ -192,7 +192,7 @@ namespace Server.Game
         {
             if (!string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)
             {
-                return; // Token ist noch gültig
+                return; 
             }
             
             _logger.Debug("Hole neues Access-Token von Twitch...");
@@ -216,7 +216,7 @@ namespace Server.Game
                 _accessToken = tokenData.GetProperty("access_token").GetString();
                 int expiresIn = tokenData.GetProperty("expires_in").GetInt32();
                 
-                // Token läuft etwas früher ab, um Probleme zu vermeiden
+                
                 _tokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
                 
                 _logger.Debug("Neues Access-Token erhalten.");
@@ -238,7 +238,7 @@ namespace Server.Game
         private async Task<GameInfo> FetchGameFromApiByNameAsync(string gameName)
         {
             _logger.Info($"Rufe Spielinformationen für Name '{gameName}' von IGDB ab...");
-            // Escape die Anführungszeichen im Namen
+            
             gameName = gameName.Replace("\"", "\\\"");
             string query = $"fields name,summary,genres.name,cover.url,screenshots.url,first_release_date,involved_companies.company.name,involved_companies.developer; search \"{gameName}\"; limit 1;";
             return await FetchGameFromApiWithQueryAsync(query);
@@ -266,7 +266,7 @@ namespace Server.Game
                 {
                     var content = await response.Content.ReadAsStringAsync();
                     
-                    // Überprüfen, ob es sich um ein valides JSON-Array handelt
+                    
                     if (string.IsNullOrWhiteSpace(content) || content == "[]")
                     {
                         _logger.Warning("Leere Ergebnisse von IGDB");
@@ -283,7 +283,7 @@ namespace Server.Game
                     
                     var gameData = games[0];
                     
-                    // Extrahiere die IGDB ID
+                    
                     int igdbId = gameData.GetProperty("id").GetInt32();
                     
                     var game = new GameInfo
@@ -292,25 +292,25 @@ namespace Server.Game
                         Title = gameData.GetProperty("name").GetString()
                     };
                     
-                    // Beschreibung extrahieren
+                    
                     if (gameData.TryGetProperty("summary", out var summaryElement))
                     {
                         game.Description = summaryElement.GetString();
                     }
                     
-                    // Cover-URL extrahieren
+                    
                     if (gameData.TryGetProperty("cover", out var coverElement) && 
                         coverElement.TryGetProperty("url", out var coverUrlElement))
                     {
                         string coverUrl = coverUrlElement.GetString();
-                        // IGDB gibt URLs mit doppelten Schrägstrichen zurück - korrigiere das
+                        
                         coverUrl = coverUrl.Replace("//", "https://");
-                        // Ändere die Größe von Thumbnail auf Full
+                        
                         game.ThumbnailUrl = coverUrl.Replace("t_thumb", "t_cover_small");
                         game.CoverUrl = coverUrl.Replace("t_thumb", "t_cover_big");
                     }
                     
-                    // Genre extrahieren
+                    
                     if (gameData.TryGetProperty("genres", out var genresElement) && genresElement.ValueKind == JsonValueKind.Array)
                     {
                         var genres = new List<string>();
@@ -324,7 +324,7 @@ namespace Server.Game
                         game.Genre = string.Join(", ", genres);
                     }
                     
-                    // Entwickler extrahieren
+                    
                     if (gameData.TryGetProperty("involved_companies", out var companiesElement) && 
                         companiesElement.ValueKind == JsonValueKind.Array)
                     {
@@ -342,10 +342,10 @@ namespace Server.Game
                         game.Developer = string.Join(", ", developers);
                     }
                     
-                    // Veröffentlichungsdatum extrahieren
+                    
                     if (gameData.TryGetProperty("first_release_date", out var releaseDateElement))
                     {
-                        // IGDB verwendet Unix-Zeitstempel
+                        
                         long timestamp = releaseDateElement.GetInt64();
                         game.ReleaseDate = DateTimeOffset.FromUnixTimeSeconds(timestamp).DateTime;
                     }
@@ -368,14 +368,14 @@ namespace Server.Game
 
         private GameInfo GetFallbackGameInfo(string cacheKey)
         {
-            // Versuche zu erkennen, ob es eine ID ist
+            
             if (int.TryParse(cacheKey, out int id))
             {
-                // Für bekannte Spiel-IDs können wir vordefinierte Daten zurückgeben
+                
                 switch (id)
                 {
-                    case 1020: // GTA V IGDB ID
-                    case 20952: // Alte GTA V ID
+                    case 1020: 
+                    case 20952: 
                         return new GameInfo
                         {
                             Id = 1020,
@@ -389,8 +389,8 @@ namespace Server.Game
                             Platform = "Multiple"
                         };
                     
-                    case 1942: // The Witcher 3 IGDB ID
-                    case 2282: // Alte Witcher 3 ID
+                    case 1942: 
+                    case 2282: 
                         return new GameInfo
                         {
                             Id = 1942,
@@ -406,14 +406,14 @@ namespace Server.Game
                 }
             }
             
-            // Für Namenssuchen versuchen wir, etwas sinnvolles zurückzugeben
+            
             if (cacheKey.StartsWith("name_"))
             {
-                string gameName = cacheKey.Substring(5); // "name_" entfernen
+                string gameName = cacheKey.Substring(5); 
                 return new GameInfo
                 {
                     Id = 0,
-                    Title = char.ToUpper(gameName[0]) + gameName.Substring(1), // Ersten Buchstaben groß machen
+                    Title = char.ToUpper(gameName[0]) + gameName.Substring(1), 
                     Description = "Keine Beschreibung verfügbar.",
                     ThumbnailUrl = "https://via.placeholder.com/150",
                     CoverUrl = "https://via.placeholder.com/300x450",
@@ -424,7 +424,7 @@ namespace Server.Game
                 };
             }
             
-            // Generischer Fallback
+            
             return new GameInfo
             {
                 Id = id,

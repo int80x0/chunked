@@ -51,7 +51,7 @@ namespace Server.Commands
 
             try
             {
-                // 1. Hole Spielinformationen
+                
                 var gameInfo = await _gameInfoService.GetGameInfoAsync(gameNameOrId);
                 if (gameInfo == null)
                 {
@@ -61,7 +61,7 @@ namespace Server.Commands
                 
                 WriteInfo($"Spiel gefunden: {gameInfo.Title} (IGDB-ID: {gameInfo.Id})");
                 
-                // 2. Finde den Discord-Kanal
+                
                 if (_forumId == 0)
                 {
                     WriteError("Keine Forum-ID in der Konfiguration angegeben.");
@@ -77,10 +77,10 @@ namespace Server.Commands
                 
                 IEnumerable<IMessage> messages;
                 
-                // 3. Je nach Kanaltyp unterschiedlich vorgehen
+                
                 if (channel is SocketForumChannel forumChannel)
                 {
-                    // Es ist ein Forum - suche nach einem Thread für das Spiel
+                    
                     var threads = await forumChannel.GetActiveThreadsAsync();
                     var gameThread = threads.FirstOrDefault(t => 
                         t.Name.Contains(gameInfo.Title, StringComparison.OrdinalIgnoreCase));
@@ -104,9 +104,9 @@ namespace Server.Commands
                 }
                 else if (channel is IMessageChannel textChannel)
                 {
-                    // Es ist ein normaler Text-Channel
+                    
                     var allMessages = await textChannel.GetMessagesAsync(200).FlattenAsync();
-                    // Filtere nach Nachrichten, die den Spieltitel enthalten
+                    
                     messages = allMessages.Where(m => 
                         m.Content?.Contains(gameInfo.Title, StringComparison.OrdinalIgnoreCase) == true || 
                         m.Embeds.Any(e => e.Title?.Contains(gameInfo.Title, StringComparison.OrdinalIgnoreCase) == true));
@@ -117,7 +117,7 @@ namespace Server.Commands
                     return;
                 }
                 
-                // 4. Finde das Version-Embed
+                
                 var versionMessage = messages
                     .Where(m => m.Author.Id == _client.CurrentUser.Id && m.Embeds.Any())
                     .FirstOrDefault(m => m.Embeds.Any(e => 
@@ -130,10 +130,10 @@ namespace Server.Commands
                     return;
                 }
                 
-                // 5. Hole das aktuelle Embed und aktualisiere es
+                
                 var oldEmbed = versionMessage.Embeds.First();
                 
-                // Erstelle ein neues Embed mit aktualisierten Informationen
+                
                 var embedBuilder = new EmbedBuilder()
                     .WithTitle(oldEmbed.Title?.Replace(GetVersionFromTitle(oldEmbed.Title), newVersion))
                     .WithDescription(oldEmbed.Description)
@@ -141,12 +141,12 @@ namespace Server.Commands
                     .WithFooter(oldEmbed.Footer?.Text)
                     .WithCurrentTimestamp();
                 
-                // Kopiere alle Felder außer dem Versionsfeld
+                
                 foreach (var field in oldEmbed.Fields)
                 {
                     if (field.Name == "Version")
                     {
-                        // Aktualisiere das Versionsfeld
+                        
                         embedBuilder.AddField("Version", newVersion, field.Inline);
                     }
                     else
@@ -155,7 +155,7 @@ namespace Server.Commands
                     }
                 }
                 
-                // 6. Aktualisiere das Embed
+                
                 try
                 {
                     await (versionMessage as IUserMessage).ModifyAsync(m => m.Embed = embedBuilder.Build());
@@ -167,7 +167,7 @@ namespace Server.Commands
                 {
                     WriteError($"Fehler beim Aktualisieren des Embeds: {ex.Message}");
                     
-                    // Fallback: Sende eine neue Nachricht mit dem aktualisierten Embed
+                    
                     if (versionMessage.Channel is IMessageChannel messageChannel)
                     {
                         await messageChannel.SendMessageAsync(
@@ -185,22 +185,22 @@ namespace Server.Commands
             }
         }
         
-        // Hilfsmethode zum Extrahieren der Version aus einem Embed-Titel
+        
         private string GetVersionFromTitle(string title)
         {
             try
             {
-                // Format: Spiel - Version X.Y.Z
+                
                 int versionIndex = title.LastIndexOf("Version", StringComparison.OrdinalIgnoreCase);
                 if (versionIndex != -1)
                 {
                     return title.Substring(versionIndex + "Version".Length).Trim();
                 }
-                return ""; // Leerer String, wenn keine Version gefunden wurde
+                return ""; 
             }
             catch
             {
-                return ""; // Im Fehlerfall leeren String zurückgeben
+                return ""; 
             }
         }
     }

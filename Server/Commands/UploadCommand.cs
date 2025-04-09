@@ -47,7 +47,7 @@ namespace Server.Commands
         {
             if (args.Length == 0)
             {
-                // Return recently used directories or common file extensions
+                
                 return new List<string> { "*.zip", "*.rar", "*.7z", "*.iso", "*.mkv", "*.mp4" };
             }
             
@@ -55,7 +55,7 @@ namespace Server.Commands
             
             if (Directory.Exists(current))
             {
-                // If it's a directory, return its contents
+                
                 try
                 {
                     var result = new List<string>();
@@ -78,12 +78,12 @@ namespace Server.Commands
             }
             else if (File.Exists(current))
             {
-                // If it's a file, return version suggestions
+                
                 return new List<string> { current + " 1.0.0", current + " 1.0.1", current + " latest" };
             }
             else
             {
-                // It's a partial path, try to autocomplete
+                
                 try
                 {
                     string directory = Path.GetDirectoryName(current) ?? "";
@@ -97,7 +97,7 @@ namespace Server.Commands
                 }
                 catch
                 {
-                    // Ignore errors during autocomplete
+                    
                 }
                 
                 return new List<string>();
@@ -126,10 +126,10 @@ namespace Server.Commands
             
             try
             {
-                // 1. Überprüfe die Datei und extrahiere die TGDB-ID
+                
                 string gameId = Path.GetFileNameWithoutExtension(filePath);
                 
-                // 2. Hole Spielinformationen
+                
                 var gameInfo = await _gameInfoService.GetGameInfoAsync(gameId);
                 if (gameInfo == null)
                 {
@@ -139,21 +139,21 @@ namespace Server.Commands
                 
                 WriteSuccess($"Spiel erkannt: {gameInfo.Title}");
                 
-                // 3. Teile die Datei in Chunks
+                
                 WriteInfo("Teile Datei in Chunks...");
                 var fileInfo = new FileInfo(filePath);
                 var chunks = await _chunkManager.CreateChunksAsync(filePath);
                 
                 WriteSuccess($"Datei in {chunks.Count} Chunks aufgeteilt.");
                 
-                // 4. Prüfe, ob Forum existiert
+                
                 if (_forumId == 0)
                 {
                     WriteError("Keine Forum-ID in der Konfiguration angegeben.");
                     return;
                 }
                 
-                // 5. Erstelle Game-Embed
+                
                 var gameEmbed = new EmbedBuilder()
                     .WithTitle(gameInfo.Title)
                     .WithDescription(gameInfo.Description ?? "Keine Beschreibung verfügbar.")
@@ -169,7 +169,7 @@ namespace Server.Commands
                     .WithCurrentTimestamp()
                     .Build();
                 
-                // 6. Erstelle Version-Embed mit einer eindeutigen Datei-ID
+                
                 string fileId = Guid.NewGuid().ToString("N");
                 var versionEmbed = new EmbedBuilder()
                     .WithTitle($"{gameInfo.Title} - Version {version}")
@@ -187,7 +187,7 @@ namespace Server.Commands
                     .WithCurrentTimestamp()
                     .Build();
                 
-                // 7. Verarbeite die Uploads im entsprechenden Kanaltyp
+                
                 var channel = _client.GetChannel(_forumId);
                 if (channel == null)
                 {
@@ -195,16 +195,16 @@ namespace Server.Commands
                     return;
                 }
                 
-                // Prüfe den Typ des Channels
+                
                 if (channel is SocketForumChannel forumChannel)
                 {
-                    // Es ist ein Forum
+                    
                     await ProcessInForumChannel(forumChannel, gameInfo, gameId, gameEmbed, versionEmbed, chunks, version, fileId);
                     
                 }
                 else if (channel is ITextChannel textChannel)
                 {
-                    // Es ist ein normaler Textchannel
+                    
                     await ProcessInTextChannel(textChannel, gameInfo, gameId, gameEmbed, versionEmbed, chunks, version, fileId);
                 }
                 else
@@ -227,7 +227,7 @@ namespace Server.Commands
             {
                 WriteInfo($"Forum erkannt, erstelle einen Thread für {gameInfo.Title}...");
                 
-                // Überprüfe, ob es bereits einen Thread mit diesem Namen gibt
+                
                 var threads = await forumChannel.GetActiveThreadsAsync();
                 var existingThread = threads.FirstOrDefault(t => 
                     t.Name.Contains(gameInfo.Title, StringComparison.OrdinalIgnoreCase));
@@ -241,13 +241,13 @@ namespace Server.Commands
                 }
                 else
                 {
-                    // Erstelle einen neuen Thread
-                    // Hier verwenden wir die Tag-IDs direkt, ohne den ForumTagProperties-Konstruktor zu verwenden
+                    
+                    
                     var applicableTagIds = new List<ulong>();
                     
                     try
                     {
-                        // Suche nach Tags, die zum Spiel passen könnten (Genre, etc.)
+                        
                         if (!string.IsNullOrEmpty(gameInfo.Genre))
                         {
                             var genreTag = forumChannel.Tags.FirstOrDefault(t => 
@@ -259,7 +259,7 @@ namespace Server.Commands
                             }
                         }
                         
-                        // Wenn keine passenden Tags gefunden wurden, versuche allgemeine Tags zu finden
+                        
                         if (applicableTagIds.Count == 0)
                         {
                             var gameTag = forumChannel.Tags.FirstOrDefault(t => 
@@ -280,16 +280,16 @@ namespace Server.Commands
                     
                     try
                     {
-                        // Discord.NET-Versionen unterscheiden sich in der Methode zum Erstellen von Forum-Posts
-                        // Hier versuchen wir beide bekannten Methoden
                         
-                        // Methode 1: CreatePostAsync (neuere Versionen)
+                        
+                        
+                        
                         try
                         {
                             var methodInfo = forumChannel.GetType().GetMethod("CreatePostAsync");
                             if (methodInfo != null)
                             {
-                                // Füge das Array von Tag-IDs hinzu, anstatt ForumTagProperties
+                                
                                 var thread = await forumChannel.CreatePostAsync(
                                     $"**{gameInfo.Title}** (ID: {gameId})",
                                     embeds: [gameEmbed]);
@@ -301,7 +301,7 @@ namespace Server.Commands
                                     text: $"**Download-Informationen für {gameInfo.Title}**",
                                     embed: versionEmbed);
                 
-                                // Lade Chunks hoch
+                                
                                 await UploadChunksAsync(threadChannel, chunks, gameInfo.Title, fileId);
                 
                                 WriteSuccess($"Upload für {gameInfo.Title} v{version} abgeschlossen!");
@@ -337,7 +337,7 @@ namespace Server.Commands
         {
             try
             {
-                // Sende die Game-Info und Versions-Info
+                
                 var mainMessage = await channel.SendMessageAsync(
                     text: $"**{gameInfo.Title}** (ID: {gameId})", 
                     embed: gameEmbed);
@@ -346,7 +346,7 @@ namespace Server.Commands
                     text: $"**Download-Informationen für {gameInfo.Title}**",
                     embed: versionEmbed);
                 
-                // Lade Chunks hoch
+                
                 await UploadChunksAsync(channel, chunks, gameInfo.Title, fileId);
                 
                 WriteSuccess($"Upload für {gameInfo.Title} v{version} abgeschlossen!");
@@ -365,10 +365,10 @@ namespace Server.Commands
             {
                 WriteInfo($"Lade {chunks.Count} Chunks für {gameTitle} hoch...");
                 
-                // Ankündigungsnachricht
+                
                 await channel.SendMessageAsync($"**Chunks für {gameTitle}** (Datei-ID: {fileId})");
                 
-                // Informationen zum Reassemblieren
+                
                 var reassembleEmbed = new EmbedBuilder()
                     .WithTitle($"Reassemblierungs-Informationen für {gameTitle}")
                     .WithDescription("Bitte Chunks in der richtigen Reihenfolge zusammenfügen.")
@@ -384,7 +384,7 @@ namespace Server.Commands
                 
                 await channel.SendMessageAsync(embed: reassembleEmbed);
                 
-                // Lade Chunks in Batches hoch (max. 10 Chunks pro Batch, um Rate-Limits zu vermeiden)
+                
                 const int batchSize = 10;
                 int totalBatches = (int)Math.Ceiling(chunks.Count / (double)batchSize);
                 
@@ -403,7 +403,7 @@ namespace Server.Commands
                         
                         using var fileStream = new FileStream(chunk.FilePath, FileMode.Open, FileAccess.Read);
                         
-                        // Erstelle einen Embed für den Chunk
+                        
                         var embed = new EmbedBuilder()
                             .WithTitle($"Chunk {chunk.Index + 1}/{chunks.Count}")
                             .WithDescription($"Game: {gameTitle}")
@@ -417,7 +417,7 @@ namespace Server.Commands
                             .WithCurrentTimestamp()
                             .Build();
                         
-                        // Lade den Chunk hoch
+                        
                         await channel.SendFileAsync(
                             fileStream, 
                             Path.GetFileName(chunk.FilePath), 
@@ -425,11 +425,11 @@ namespace Server.Commands
                         
                         WriteInfo($"Chunk {chunk.Index + 1}/{chunks.Count} hochgeladen");
                         
-                        // Kleine Pause, um Rate-Limits zu vermeiden
+                        
                         await Task.Delay(1000);
                     }
                     
-                    // Pause zwischen Batches, um Discord-Rate-Limits zu vermeiden
+                    
                     if (batchIndex < totalBatches - 1)
                     {
                         WriteInfo($"Warte vor dem nächsten Batch...");
@@ -437,7 +437,7 @@ namespace Server.Commands
                     }
                 }
                 
-                // Abschluss-Nachricht
+                
                 await channel.SendMessageAsync($"✅ **Alle {chunks.Count} Chunks für {gameTitle} wurden erfolgreich hochgeladen.**");
                 
                 WriteSuccess($"Alle Chunks für {gameTitle} wurden erfolgreich hochgeladen.");

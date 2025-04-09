@@ -24,7 +24,7 @@ namespace Server
                 .AddJsonFile("appsettings.json", optional: false)
                 .Build();
             
-            // Get the configured log level before starting anything
+            
             var logLevelStr = configuration.GetValue<string>("Logging:MinimumLevel", "Info");
             System.Console.WriteLine($"DIAGNOSTIC: Configured log level from appsettings.json: {logLevelStr}");
             
@@ -35,25 +35,25 @@ namespace Server
             var logger = _services.GetRequiredService<Logger>();
             logger.Info("Starting ChunkyBotServer...");
             
-            // Initialize and start the LicenseServer
+            
             var licenseServer = _services.GetRequiredService<LicenseServer>();
             licenseServer.Start();
             logger.Info("LicenseServer started.");
             
-            // Register and start the ConsoleCommandHandler
+            
             var commandHandler = _services.GetRequiredService<ConsoleCommandHandler>();
             CommandRegistration.RegisterConsoleCommands(_services, commandHandler);
             
-            // Start the Discord bot
+            
             var botHandler = _services.GetRequiredService<BotHandler>();
             await botHandler.StartAsync();
             logger.Info("Discord bot started.");
             
-            // Start the console command loop
+            
             logger.Info("Starting console command loop...");
             await commandHandler.StartAsync();
             
-            // When the command handler exits, shut everything down
+            
             logger.Info("Server is shutting down...");
             
             await botHandler.StopAsync();
@@ -64,25 +64,25 @@ namespace Server
 
         private static void ConfigureServices(ServiceCollection services, IConfiguration configuration)
         {
-            // Configuration
+            
             services.AddSingleton(configuration);
             
-            // Parse log level from configuration
+            
             var logLevelStr = configuration.GetValue<string>("Logging:MinimumLevel", "Info");
             var logLevel = Enum.TryParse<LogLevel>(logLevelStr, true, out var level) ? level : LogLevel.Info;
             
-            // Convert Server LogLevel to LicenseSystem LogLevel
+            
             var licenseSystemLogLevel = (LicenseSystem.Services.LogLevel)logLevel;
             
             System.Console.WriteLine($"DIAGNOSTIC: Using LogLevel.{logLevel} for Server and LogLevel.{licenseSystemLogLevel} for LicenseSystem");
             
-            // Logging
+            
             services.AddSingleton<Logger>();
             
-            // Memory Cache for the GameInfoService
+            
             services.AddMemoryCache();
             
-            // Discord Services
+            
             services.AddSingleton(new DiscordSocketClient(new DiscordSocketConfig
             {
                 GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent,
@@ -93,11 +93,11 @@ namespace Server
             services.AddSingleton<CommandHandler>();
             services.AddSingleton<PresenceManager>();
             
-            // Game Services
+            
             services.AddSingleton<GameInfoService>();
             services.AddSingleton<ChunkManager>();
             
-            // License Services - pass the configured log level
+            
             services.AddSingleton<LicenseServer>(provider =>
             {
                 var logger = provider.GetRequiredService<Logger>();
@@ -119,7 +119,7 @@ namespace Server
             
             services.AddSingleton<ServerHandler>();
             
-            // Console Command Handler
+            
             services.AddSingleton<ConsoleCommandHandler>();
         }
     }

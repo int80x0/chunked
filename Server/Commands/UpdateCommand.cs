@@ -47,17 +47,17 @@ namespace Server.Commands
         {
             if (args.Length == 0)
             {
-                // Beispiele für Spielnamen
+                
                 return new List<string> { "Grand Theft Auto V", "The Witcher 3", "Fallout 4", "Cyberpunk 2077" };
             }
             else if (args.Length == 1)
             {
-                // Bei einem Argument erwarten wir den Dateipfad
+                
                 string current = args[0];
                 
                 if (Directory.Exists(current))
                 {
-                    // Wenn es ein Verzeichnis ist, zeige dessen Inhalt
+                    
                     try
                     {
                         var result = new List<string>();
@@ -81,7 +81,7 @@ namespace Server.Commands
             }
             else if (args.Length == 2)
             {
-                // Bei zwei Argumenten erwarten wir die Version
+                
                 return new List<string> { args[0] + " " + args[1] + " 1.0.1", args[0] + " " + args[1] + " 1.1.0", args[0] + " " + args[1] + " 2.0.0" };
             }
             
@@ -111,7 +111,7 @@ namespace Server.Commands
             
             try
             {
-                // 1. Hole Spielinformationen
+                
                 var gameInfo = await _gameInfoService.GetGameInfoAsync(gameNameOrId);
                 if (gameInfo == null)
                 {
@@ -121,7 +121,7 @@ namespace Server.Commands
                 
                 WriteInfo($"Spiel gefunden: {gameInfo.Title} (IGDB-ID: {gameInfo.Id})");
                 
-                // 2. Finde den Discord-Kanal
+                
                 if (_forumId == 0)
                 {
                     WriteError("Keine Forum-ID in der Konfiguration angegeben.");
@@ -138,10 +138,10 @@ namespace Server.Commands
                 IMessageChannel messageChannel;
                 IEnumerable<IMessage> messages;
                 
-                // 3. Je nach Kanaltyp unterschiedlich vorgehen
+                
                 if (channel is SocketForumChannel forumChannel)
                 {
-                    // Es ist ein Forum - suche nach einem Thread für das Spiel
+                    
                     var threads = await forumChannel.GetActiveThreadsAsync();
                     var gameThread = threads.FirstOrDefault(t => 
                         t.Name.Contains(gameInfo.Title, StringComparison.OrdinalIgnoreCase));
@@ -165,10 +165,10 @@ namespace Server.Commands
                 }
                 else if (channel is IMessageChannel textChannel)
                 {
-                    // Es ist ein normaler Text-Channel
+                    
                     messageChannel = textChannel;
                     
-                    // Hole alle Nachrichten und filtere nach dem Spieltitel
+                    
                     var allMessages = await textChannel.GetMessagesAsync(200).FlattenAsync();
                     messages = allMessages.Where(m => 
                         m.Content?.Contains(gameInfo.Title, StringComparison.OrdinalIgnoreCase) == true || 
@@ -180,7 +180,7 @@ namespace Server.Commands
                     return;
                 }
                 
-                // 4. Finde das Version-Embed und bestehende Chunks
+                
                 var versionMessage = messages
                     .Where(m => m.Author.Id == _client.CurrentUser.Id && m.Embeds.Any())
                     .FirstOrDefault(m => m.Embeds.Any(e => 
@@ -193,7 +193,7 @@ namespace Server.Commands
                     return;
                 }
                 
-                // Extrahiere die alte Datei-ID aus dem Version-Embed
+                
                 string oldFileId = null;
                 foreach (var embed in versionMessage.Embeds)
                 {
@@ -215,7 +215,7 @@ namespace Server.Commands
                 
                 WriteInfo($"Alte Datei-ID gefunden: {oldFileId}");
                 
-                // Sammle alle Chunk-Nachrichten für die alte Datei-ID
+                
                 var chunkMessages = messages
                     .Where(m => m.Embeds.Any(e => e.Title?.StartsWith("Chunk", StringComparison.OrdinalIgnoreCase) == true &&
                                           e.Footer?.Text?.Contains(oldFileId) == true))
@@ -223,18 +223,18 @@ namespace Server.Commands
                 
                 WriteInfo($"Gefunden: {chunkMessages.Count} alte Chunks");
                 
-                // Finde die Ankündigungs-Nachrichten für Chunks
+                
                 var chunkAnnouncementMessages = messages
                     .Where(m => m.Content?.Contains($"**Chunks für {gameInfo.Title}**", StringComparison.OrdinalIgnoreCase) == true ||
                                m.Embeds.Any(e => e.Title?.Contains("Reassemblierungs-Informationen", StringComparison.OrdinalIgnoreCase) == true))
                     .ToList();
                 
-                // Finde die Abschluss-Nachricht (falls vorhanden)
+                
                 var completionMessage = messages
                     .FirstOrDefault(m => m.Content?.Contains($"✅ **Alle", StringComparison.OrdinalIgnoreCase) == true &&
                                      m.Content?.Contains($"Chunks für {gameInfo.Title}", StringComparison.OrdinalIgnoreCase) == true);
                 
-                // 5. Bestätige das Löschen und Aktualisieren
+                
                 WriteWarning($"Bereit, {chunkMessages.Count} Chunks zu löschen und die Version von {gameInfo.Title} zu aktualisieren.");
                 if (!await ConfirmActionAsync($"Möchtest du fortfahren und die Version auf {newVersion} aktualisieren? (j/n)"))
                 {
@@ -242,7 +242,7 @@ namespace Server.Commands
                     return;
                 }
                 
-                // 6. Lösche alte Chunk-Nachrichten
+                
                 WriteInfo("Lösche alte Chunk-Nachrichten...");
                 int deletedCount = 0;
                 
@@ -255,7 +255,7 @@ namespace Server.Commands
                             await userMsg.DeleteAsync();
                             deletedCount++;
                             
-                            // Mache kurze Pausen zwischen Löschoperationen, um Rate-Limits zu vermeiden
+                            
                             if (deletedCount % 5 == 0)
                             {
                                 await Task.Delay(1000);
@@ -268,7 +268,7 @@ namespace Server.Commands
                     }
                 }
                 
-                // Lösche die Abschluss-Nachricht, falls vorhanden
+                
                 if (completionMessage != null && completionMessage is IUserMessage completionUserMsg)
                 {
                     try
@@ -284,23 +284,23 @@ namespace Server.Commands
                 
                 WriteSuccess($"{deletedCount} alte Nachrichten gelöscht.");
                 
-                // 7. Aktualisiere das Version-Embed
+                
                 WriteInfo("Aktualisiere Version-Embed...");
                 
-                // Hole das aktuelle Embed und aktualisiere es
+                
                 var oldEmbed = versionMessage.Embeds.First();
                 
-                // Erstelle eine neue Datei-ID für die neue Version
+                
                 string newFileId = Guid.NewGuid().ToString("N");
                 
-                // Teile die Datei in Chunks
+                
                 WriteInfo("Teile neue Datei in Chunks...");
                 var fileInfo = new FileInfo(filePath);
                 var chunks = await _chunkManager.CreateChunksAsync(filePath);
                 
                 WriteSuccess($"Neue Datei in {chunks.Count} Chunks aufgeteilt.");
                 
-                // Erstelle ein neues Embed mit aktualisierten Informationen
+                
                 var embedBuilder = new EmbedBuilder()
                     .WithTitle($"{gameInfo.Title} - Version {newVersion}")
                     .WithDescription(oldEmbed.Description)
@@ -308,7 +308,7 @@ namespace Server.Commands
                     .WithFooter(oldEmbed.Footer?.Text)
                     .WithCurrentTimestamp();
                 
-                // Kopiere und aktualisiere alle Felder
+                
                 foreach (var field in oldEmbed.Fields)
                 {
                     if (field.Name == "Version")
@@ -333,12 +333,12 @@ namespace Server.Commands
                     }
                     else
                     {
-                        // Korrekte Methode für das Hinzufügen eines bestehenden Feldes
+                        
                         embedBuilder.AddField(field.Name, field.Value, field.Inline);
                     }
                 }
                 
-                // Aktualisiere das Embed
+                
                 try
                 {
                     await (versionMessage as IUserMessage).ModifyAsync(m => m.Embed = embedBuilder.Build());
@@ -350,15 +350,15 @@ namespace Server.Commands
                     return;
                 }
                 
-                // 8. Lade die neuen Chunks hoch
+                
                 try
                 {
                     WriteInfo($"Lade {chunks.Count} neue Chunks für {gameInfo.Title} hoch...");
                     
-                    // Ankündigungsnachricht
+                    
                     await messageChannel.SendMessageAsync($"**Chunks für {gameInfo.Title}** (Datei-ID: {newFileId})");
                     
-                    // Informationen zum Reassemblieren
+                    
                     var reassembleEmbed = new EmbedBuilder()
                         .WithTitle($"Reassemblierungs-Informationen für {gameInfo.Title}")
                         .WithDescription("Bitte Chunks in der richtigen Reihenfolge zusammenfügen.")
@@ -374,7 +374,7 @@ namespace Server.Commands
                     
                     await messageChannel.SendMessageAsync(embed: reassembleEmbed);
                     
-                    // Lade Chunks in Batches hoch (max. 10 Chunks pro Batch, um Rate-Limits zu vermeiden)
+                    
                     const int batchSize = 10;
                     int totalBatches = (int)Math.Ceiling(chunks.Count / (double)batchSize);
                     
@@ -393,7 +393,7 @@ namespace Server.Commands
                             
                             using var fileStream = new FileStream(chunk.FilePath, FileMode.Open, FileAccess.Read);
                             
-                            // Erstelle einen Embed für den Chunk
+                            
                             var embed = new EmbedBuilder()
                                 .WithTitle($"Chunk {chunk.Index + 1}/{chunks.Count}")
                                 .WithDescription($"Game: {gameInfo.Title}")
@@ -407,7 +407,7 @@ namespace Server.Commands
                                 .WithCurrentTimestamp()
                                 .Build();
                             
-                            // Lade den Chunk hoch
+                            
                             await messageChannel.SendFileAsync(
                                 fileStream, 
                                 Path.GetFileName(chunk.FilePath), 
@@ -415,11 +415,11 @@ namespace Server.Commands
                             
                             WriteInfo($"Chunk {chunk.Index + 1}/{chunks.Count} hochgeladen");
                             
-                            // Kleine Pause, um Rate-Limits zu vermeiden
+                            
                             await Task.Delay(1000);
                         }
                         
-                        // Pause zwischen Batches, um Discord-Rate-Limits zu vermeiden
+                        
                         if (batchIndex < totalBatches - 1)
                         {
                             WriteInfo($"Warte vor dem nächsten Batch...");
@@ -427,7 +427,7 @@ namespace Server.Commands
                         }
                     }
                     
-                    // Abschluss-Nachricht
+                    
                     await messageChannel.SendMessageAsync($"✅ **Alle {chunks.Count} Chunks für {gameInfo.Title} wurden erfolgreich hochgeladen.**");
                     
                     WriteSuccess($"Alle Chunks für {gameInfo.Title} wurden erfolgreich hochgeladen.");

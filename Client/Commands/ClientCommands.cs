@@ -56,15 +56,15 @@ namespace Client.Commands
                 _logger.Info($"Requesting download information for game ID {gameId}");
                 AnsiConsole.MarkupLine($"[cyan]Frage Download-Informationen für Spiel-ID {gameId} an...[/]");
                 
-                // Send a request to the server
+                
                 await _client.SendCommandAsync($"download {gameId}");
                 
-                // Wait for the response (this should be handled in an event handler)
+                
                 _logger.Debug("Waiting for server response");
                 AnsiConsole.MarkupLine("[cyan]Warte auf Antwort vom Server...[/]");
                 
-                // In practice, you would use an event-based approach
-                // For this example, we simulate a response
+                
+                
                 var downloadInfo = await WaitForDownloadInfoAsync(gameId);
                 
                 if (downloadInfo == null)
@@ -74,7 +74,7 @@ namespace Client.Commands
                     return;
                 }
                 
-                // Create a directory for the game
+                
                 string gameDirectory = Path.Combine(_downloadDirectory, downloadInfo.GameTitle);
                 if (!Directory.Exists(gameDirectory))
                 {
@@ -82,14 +82,14 @@ namespace Client.Commands
                     Directory.CreateDirectory(gameDirectory);
                 }
                 
-                // Show download information
+                
                 _logger.Info($"Received download info for \"{downloadInfo.GameTitle}\"");
                 AnsiConsole.MarkupLine($"[green]Download-Informationen für \"{downloadInfo.GameTitle}\" erhalten.[/]");
                 AnsiConsole.MarkupLine($"Datei-ID: {downloadInfo.FileId}");
                 AnsiConsole.MarkupLine($"Anzahl Chunks: {downloadInfo.ChunkCount}");
                 AnsiConsole.MarkupLine($"Gesamtgröße: {FormatFileSize(downloadInfo.TotalSize)}");
                 
-                // Ask the user if they want to proceed
+                
                 if (!AnsiConsole.Confirm("Möchtest du den Download starten?"))
                 {
                     _logger.Info("Download canceled by user");
@@ -97,11 +97,11 @@ namespace Client.Commands
                     return;
                 }
                 
-                // Start downloading the chunks
+                
                 _logger.Info($"Starting download of {downloadInfo.ChunkCount} chunks for \"{downloadInfo.GameTitle}\"");
                 await DownloadChunksAsync(downloadInfo, gameDirectory);
                 
-                // Reassemble the file
+                
                 _logger.Info("Reassembling file from chunks");
                 await ReassembleFileAsync(downloadInfo, gameDirectory);
                 
@@ -117,8 +117,8 @@ namespace Client.Commands
 
         private async Task<DownloadInfo> WaitForDownloadInfoAsync(int gameId)
         {
-            // In a real implementation, you would wait for a message from the server
-            // For this example, we simulate a short delay and return test data
+            
+            
             _logger.Debug("Simulating server response with download information");
             await Task.Delay(1500);
             
@@ -128,21 +128,21 @@ namespace Client.Commands
                 GameTitle = gameId == 20952 ? "Grand Theft Auto V" : $"Game {gameId}",
                 FileId = "1a2b3c4d5e6f7g8h9i0j",
                 ChunkCount = 5,
-                TotalSize = 5 * 1024 * 1024 * 1024L, // 5 GB
+                TotalSize = 5 * 1024 * 1024 * 1024L, 
                 Chunks = new List<ChunkInfo>
                 {
-                    new ChunkInfo { Index = 0, Id = "chunk1", Size = 1024 * 1024 * 1024, Url = "https://example.com/chunks/1" },
-                    new ChunkInfo { Index = 1, Id = "chunk2", Size = 1024 * 1024 * 1024, Url = "https://example.com/chunks/2" },
-                    new ChunkInfo { Index = 2, Id = "chunk3", Size = 1024 * 1024 * 1024, Url = "https://example.com/chunks/3" },
-                    new ChunkInfo { Index = 3, Id = "chunk4", Size = 1024 * 1024 * 1024, Url = "https://example.com/chunks/4" },
-                    new ChunkInfo { Index = 4, Id = "chunk5", Size = 1024 * 1024 * 1024, Url = "https://example.com/chunks/5" }
+                    new ChunkInfo { Index = 0, Id = "chunk1", Size = 1024 * 1024 * 1024, Url = "https:"},
+                    new ChunkInfo { Index = 1, Id = "chunk2", Size = 1024 * 1024 * 1024, Url = "https:"},
+                    new ChunkInfo { Index = 2, Id = "chunk3", Size = 1024 * 1024 * 1024, Url = "https:"},
+                    new ChunkInfo { Index = 3, Id = "chunk4", Size = 1024 * 1024 * 1024, Url = "https:"},
+                    new ChunkInfo { Index = 4, Id = "chunk5", Size = 1024 * 1024 * 1024, Url = "https:"}
                 }
             };
         }
 
         private async Task DownloadChunksAsync(DownloadInfo downloadInfo, string outputDirectory)
         {
-            // Create a temporary directory for the chunks
+            
             string chunksDirectory = Path.Combine(outputDirectory, "chunks");
             if (!Directory.Exists(chunksDirectory))
             {
@@ -150,7 +150,7 @@ namespace Client.Commands
                 Directory.CreateDirectory(chunksDirectory);
             }
             
-            // Show a progress bar for the overall download
+            
             _logger.Info("Starting chunk download process");
             await AnsiConsole.Progress()
                 .Columns(new ProgressColumn[]
@@ -174,7 +174,7 @@ namespace Client.Commands
                         
                         string chunkPath = Path.Combine(chunksDirectory, $"chunk_{chunk.Index}.bin");
                         
-                        // Simulate the download (in a real implementation, you would perform the actual download)
+                        
                         await SimulateChunkDownloadAsync(chunk, chunkPath, progress => chunkTask.Value = progress);
                         
                         chunkTask.Value = 100;
@@ -189,13 +189,13 @@ namespace Client.Commands
         private async Task SimulateChunkDownloadAsync(ChunkInfo chunk, string outputPath, Action<double> progressCallback)
         {
             _logger.Debug($"Simulating download of chunk {chunk.Index}, size: {FormatFileSize(chunk.Size)}");
-            // Simulate a download with progress indication
-            // In a real implementation, you would perform the actual download here
             
-            // Create an empty file with the specified size (only for the simulation)
+            
+            
+            
             using (var fileStream = new FileStream(outputPath, FileMode.Create, FileAccess.Write))
             {
-                // Simulate writing data to the file
+                
                 int bufferSize = 4096;
                 byte[] buffer = new byte[bufferSize];
                 long bytesWritten = 0;
@@ -204,21 +204,21 @@ namespace Client.Commands
                 {
                     int bytesToWrite = (int)Math.Min(bufferSize, chunk.Size - bytesWritten);
                     
-                    // In a real implementation, you would read data from the server here
-                    // fileStream.Write(buffer, 0, bytesToWrite);
+                    
+                    
                     
                     bytesWritten += bytesToWrite;
                     
-                    // Update progress
+                    
                     double progress = (double)bytesWritten / chunk.Size * 100;
                     progressCallback(progress);
                     
-                    // Slow down the simulation a bit
+                    
                     await Task.Delay(50);
                 }
             }
             
-            // In the simulation, we don't use real files, so we just report that the file has been "downloaded"
+            
             await Task.Delay(200);
             _logger.Debug($"Chunk {chunk.Index} simulation completed");
         }
@@ -234,8 +234,8 @@ namespace Client.Commands
             await AnsiConsole.Status()
                 .StartAsync("Reassembliere Datei...", async ctx =>
                 {
-                    // In a real implementation, you would perform the actual reassembly here
-                    // Simulate the reassembly
+                    
+                    
                     _logger.Debug($"Creating output file: {outputFilePath}");
                     ctx.Status($"Erstelle Ausgabedatei: {outputFilePath}");
                     await Task.Delay(1000);

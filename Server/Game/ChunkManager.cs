@@ -35,8 +35,8 @@ namespace Server.Game
             _logger = logger;
             
             _chunksDirectory = _config.GetValue<string>("Game:ChunksDirectory", "data/chunks");
-            _defaultChunkSize = _config.GetValue<long>("Game:DefaultChunkSize", 8 * 1024 * 1024); // 8 MB Standard
-            _downloadBaseUrl = _config.GetValue<string>("Game:DownloadBaseUrl", "http://localhost:5000/api/chunks");
+            _defaultChunkSize = _config.GetValue<long>("Game:DefaultChunkSize", 8 * 1024 * 1024); 
+            _downloadBaseUrl = _config.GetValue<string>("Game:DownloadBaseUrl", "http://localhost:5000");
             
             if (!Directory.Exists(_chunksDirectory))
             {
@@ -67,7 +67,7 @@ namespace Server.Game
                 string gameName = Path.GetFileNameWithoutExtension(filePath);
                 string fileExtension = Path.GetExtension(filePath);
                 
-                // Erstelle ein Verzeichnis für diese Datei
+                
                 string chunkDir = Path.Combine(_chunksDirectory, fileId);
                 Directory.CreateDirectory(chunkDir);
                 
@@ -83,11 +83,11 @@ namespace Server.Game
                 
                 while ((bytesRead = await fileStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                 {
-                    // Berechne Hash für diesen Chunk
+                    
                     byte[] hash = md5.ComputeHash(buffer, 0, bytesRead);
                     string hashString = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
                     
-                    // Erstelle Chunk-Datei
+                    
                     string chunkFileName = $"{gameName}_{chunkIndex}{fileExtension}.chunk";
                     string chunkPath = Path.Combine(chunkDir, chunkFileName);
                     
@@ -96,7 +96,7 @@ namespace Server.Game
                         await chunkStream.WriteAsync(buffer, 0, bytesRead);
                     }
                     
-                    // Erstelle Chunk-Objekt
+                    
                     var chunk = new FileChunk
                     {
                         Id = $"{fileId}_{chunkIndex}",
@@ -116,7 +116,7 @@ namespace Server.Game
                     _logger.Debug($"Chunk {chunkIndex} erstellt: {chunkFileName} ({FormatFileSize(bytesRead)})");
                 }
                 
-                // Erstelle eine Manifest-Datei
+                
                 await CreateManifestAsync(chunkDir, result, fileInfo);
                 
                 _logger.Info($"Datei in {result.Count} Chunks aufgeteilt. Total: {FormatFileSize(totalBytesRead)}");
@@ -193,11 +193,11 @@ namespace Server.Game
                 
                 using var outputStream = new FileStream(outputPath, FileMode.Create, FileAccess.Write);
                 
-                // Iteriere über alle Chunks in der richtigen Reihenfolge
+                
                 var chunks = manifest.GetProperty("Chunks");
                 for (int i = 0; i < chunkCount; i++)
                 {
-                    // Finde den Chunk mit dem aktuellen Index
+                    
                     string chunkFileName = null;
                     foreach (var chunk in chunks.EnumerateArray())
                     {
@@ -219,7 +219,7 @@ namespace Server.Game
                         throw new FileNotFoundException($"Chunk-Datei '{chunkFileName}' für Datei-ID '{fileId}' nicht gefunden.");
                     }
                     
-                    // Lese den Chunk und schreibe ihn in die Ausgabedatei
+                    
                     using var chunkStream = new FileStream(chunkPath, FileMode.Open, FileAccess.Read);
                     await chunkStream.CopyToAsync(outputStream);
                     

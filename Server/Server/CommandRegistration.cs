@@ -21,7 +21,7 @@ namespace Server.Server
             
             try
             {
-                // Basis-Befehle
+                
                 var broadcastCommand = new BroadcastCommand(
                     services.GetRequiredService<LicenseSystem.Services.LicenseServer>(),
                     services.GetRequiredService<Logger>());
@@ -38,7 +38,7 @@ namespace Server.Server
                     services.GetRequiredService<LicenseSystem.Services.LicenseServer>(),
                     services.GetRequiredService<Logger>());
                 
-                // Game-Befehle
+                
                 var uploadCommand = new UploadCommand(
                     services.GetRequiredService<DiscordSocketClient>(),
                     services.GetRequiredService<IConfiguration>(),
@@ -59,7 +59,7 @@ namespace Server.Server
                     services.GetRequiredService<Logger>(),
                     services.GetRequiredService<GameInfoService>());
                 
-                // Neuer UpdateCommand
+                
                 var updateCommand = new UpdateCommand(
                     services.GetRequiredService<DiscordSocketClient>(),
                     services.GetRequiredService<IConfiguration>(),
@@ -67,7 +67,7 @@ namespace Server.Server
                     services.GetRequiredService<GameInfoService>(),
                     services.GetRequiredService<ChunkManager>());
                 
-                // Registriere alle Befehle
+                
                 commandHandler.RegisterCommand(broadcastCommand);
                 commandHandler.RegisterCommand(usersCommand);
                 commandHandler.RegisterCommand(kickCommand);
@@ -75,9 +75,9 @@ namespace Server.Server
                 commandHandler.RegisterCommand(uploadCommand);
                 commandHandler.RegisterCommand(downloadCommand);
                 commandHandler.RegisterCommand(versionCommand);
-                commandHandler.RegisterCommand(updateCommand); // Registriere den neuen UpdateCommand
+                commandHandler.RegisterCommand(updateCommand); 
                 
-                logger.Info($"Insgesamt {8} Console-Befehle registriert."); // Update die Zahl
+                logger.Info($"Insgesamt {8} Console-Befehle registriert."); 
             }
             catch (Exception ex)
             {
@@ -86,7 +86,7 @@ namespace Server.Server
         }
     }
     
-    // Basis-Befehle
+    
     
     public class BroadcastCommand : ConsoleCommand
     {
@@ -165,7 +165,7 @@ namespace Server.Server
                 WriteInfo($"{users.Count} Benutzer {(onlineOnly ? "online" : "registriert")}:");
                 System.Console.WriteLine();
                 
-                // Tabellenkopf
+                
                 System.Console.WriteLine($"{"Benutzername",-20} | {"Status",-10} | {"Lizenz",-20} | {"Gültig bis",-20} | {"IP-Adresse",-15}");
                 System.Console.WriteLine(new string('-', 95));
                 

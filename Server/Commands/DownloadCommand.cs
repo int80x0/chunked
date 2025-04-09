@@ -49,21 +49,21 @@ namespace Server.Commands
 
         private static async Task<List<string>> GetAutocompleteSuggestionsAsync(string[] args)
         {
-            // Hier könnten wir eine Liste der verfügbaren Spiel-Namen zurückgeben
-            // oder die Liste der Client-IDs für den zweiten Parameter
+            
+            
             if (args.Length == 0)
             {
-                // Beispiele für Spiele
+                
                 return new List<string> { "Grand Theft Auto V", "The Witcher 3", "Fallout 4", "Cyberpunk 2077" };
             }
             else if (args.Length == 1)
             {
-                // Optionen für den zweiten Parameter
+                
                 return new List<string> { args[0] + " local", args[0] + " client_id" };
             }
             else if (args.Length == 2 && args[1].ToLower() == "local")
             {
-                // Bei "local" als Option, mögliche Pfade ergänzen
+                
                 string[] commonPaths = {
                     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"),
                     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)),
@@ -92,7 +92,7 @@ namespace Server.Commands
 
             try
             {
-                // 1. Hole Spielinformationen
+                
                 var gameInfo = await _gameInfoService.GetGameInfoAsync(gameNameOrId);
                 if (gameInfo == null)
                 {
@@ -102,7 +102,7 @@ namespace Server.Commands
                 
                 WriteInfo($"Spiel gefunden: {gameInfo.Title} (IGDB-ID: {gameInfo.Id})");
                 
-                // 2. Finde den Discord-Kanal für das Spiel
+                
                 if (_forumId == 0)
                 {
                     WriteError("Keine Forum-ID in der Konfiguration angegeben.");
@@ -119,10 +119,10 @@ namespace Server.Commands
                 IEnumerable<IMessage> allMessages;
                 IMessageChannel messageChannel;
                 
-                // 3. Je nach Kanaltyp unterschiedlich vorgehen
+                
                 if (channel is SocketForumChannel forumChannel)
                 {
-                    // Es ist ein Forum - suche nach einem Thread für das Spiel
+                    
                     var threads = await forumChannel.GetActiveThreadsAsync();
                     var gameThread = threads.FirstOrDefault(t => 
                         t.Name.Contains(gameInfo.Title, StringComparison.OrdinalIgnoreCase));
@@ -146,10 +146,10 @@ namespace Server.Commands
                 }
                 else if (channel is IMessageChannel textChannel)
                 {
-                    // Es ist ein normaler Text-Channel
+                    
                     messageChannel = textChannel;
                     
-                    // Hole alle Nachrichten und filtere nach dem Spieltitel
+                    
                     var messages = await textChannel.GetMessagesAsync(200).FlattenAsync();
                     allMessages = messages.Where(m => 
                         m.Content?.Contains(gameInfo.Title, StringComparison.OrdinalIgnoreCase) == true || 
@@ -161,7 +161,7 @@ namespace Server.Commands
                     return;
                 }
                 
-                // 4. Suche nach dem Version-Embed und der Datei-ID
+                
                 string fileId = null;
                 
                 foreach (var message in allMessages)
@@ -189,7 +189,7 @@ namespace Server.Commands
                 
                 WriteInfo($"Datei-ID gefunden: {fileId}");
                 
-                // 5. Sammle Chunks
+                
                 var chunkMessages = allMessages
                     .Where(m => m.Embeds.Any(e => e.Title?.StartsWith("Chunk", StringComparison.OrdinalIgnoreCase) == true &&
                                               e.Footer?.Text?.Contains(fileId) == true))
@@ -203,7 +203,7 @@ namespace Server.Commands
                 
                 WriteInfo($"{chunkMessages.Count} Chunks für {gameInfo.Title} gefunden.");
                 
-                // 6. Extrahiere Chunk-Informationen
+                
                 var chunks = new List<(int index, string id, long size, string url, string hash)>();
                 
                 foreach (var message in chunkMessages)
@@ -214,7 +214,7 @@ namespace Server.Commands
                     {
                         if (embed.Title != null && embed.Title.StartsWith("Chunk"))
                         {
-                            // Format: "Chunk X/Y"
+                            
                             string[] parts = embed.Title.Split(' ')[1].Split('/');
                             if (int.TryParse(parts[0], out int index))
                             {
@@ -222,7 +222,7 @@ namespace Server.Commands
                                 long size = 0;
                                 string hash = null;
                                 
-                                // Extrahiere Chunk-ID, Größe und Hash aus den Embed-Feldern
+                                
                                 foreach (var field in embed.Fields)
                                 {
                                     if (field.Name == "Chunk-ID")
@@ -239,7 +239,7 @@ namespace Server.Commands
                                     }
                                 }
                                 
-                                // Hol die Attachment-URL
+                                
                                 var attachment = message.Attachments.First();
                                 string url = attachment.Url;
                                 
@@ -262,7 +262,7 @@ namespace Server.Commands
                 
                 WriteInfo($"Erfolgreich {chunks.Count} Chunks extrahiert.");
                 
-                // 7. Erstelle Download-Anweisung
+                
                 var downloadInfo = new
                 {
                     GameId = gameInfo.Id,
@@ -283,15 +283,15 @@ namespace Server.Commands
                 string downloadJson = System.Text.Json.JsonSerializer.Serialize(downloadInfo, 
                     new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
                 
-                // 8. Je nach Modus unterschiedlich vorgehen
+                
                 if (downloadLocally)
                 {
-                    // Direkter Download auf den Server
+                    
                     await DownloadChunksLocallyAsync(gameInfo, downloadInfo, chunks, outputPath);
                 }
                 else if (!string.IsNullOrEmpty(clientId))
                 {
-                    // Sende direkt an Client
+                    
                     var clients = _licenseServer.GetAllUsers();
                     var client = clients.FirstOrDefault(c => c.ClientId == clientId);
                     
@@ -301,14 +301,14 @@ namespace Server.Commands
                         return;
                     }
                     
-                    // Sende Download-Info an Client
+                    
                     _licenseServer.SendMessageToClient(clientId, downloadJson);
                     
                     WriteSuccess($"Download-Informationen für {gameInfo.Title} an Client {client.Username} gesendet.");
                 }
                 else
                 {
-                    // Speichere für späteren Abruf
+                    
                     string downloadsDir = _config.GetValue<string>("Game:DownloadsDirectory", "data/downloads");
                     if (!Directory.Exists(downloadsDir))
                     {
@@ -334,14 +334,14 @@ namespace Server.Commands
         {
             try
             {
-                // Ermittle die Dateierweiterung aus dem ersten Chunk
-                string fileExtension = ".bin"; // Standardwert
+                
+                string fileExtension = ".bin"; 
                 if (chunks.Count > 0 && !string.IsNullOrEmpty(chunks[0].url))
                 {
-                    // Versuche erst, die Erweiterung aus dem Attachment-Namen zu bekommen
+                    
                     string attachmentName = Path.GetFileName(new Uri(chunks[0].url).AbsolutePath);
                     
-                    // Format ist typischerweise "name_index.extension.chunk"
+                    
                     if (attachmentName.Contains(".chunk"))
                     {
                         string nameWithoutChunk = attachmentName.Replace(".chunk", "");
@@ -358,7 +358,7 @@ namespace Server.Commands
                 string tempDir = Path.Combine(outputDirectory, $"temp_{safeTitle}_{Path.GetRandomFileName()}");
                 string outputFilePath = Path.Combine(outputDirectory, $"{safeTitle}{fileExtension}");
                 
-                // Erstelle temporäres Verzeichnis für Chunks
+                
                 if (!Directory.Exists(tempDir))
                 {
                     Directory.CreateDirectory(tempDir);
@@ -370,7 +370,7 @@ namespace Server.Commands
                 long totalBytes = 0;
                 long totalSize = chunks.Sum(c => c.size);
                 
-                // Download-Fortschrittszähler
+                
                 var lastProgressUpdate = DateTime.Now;
                 var startTime = DateTime.Now;
                 
@@ -381,7 +381,7 @@ namespace Server.Commands
                         WriteInfo($"Lade Chunk {chunk.index + 1}/{chunks.Count} herunter...");
                         string chunkPath = Path.Combine(tempDir, $"chunk_{chunk.index}.bin");
                         
-                        // Chunk herunterladen
+                        
                         using (var response = await _httpClient.GetAsync(chunk.url, HttpCompletionOption.ResponseHeadersRead))
                         {
                             response.EnsureSuccessStatusCode();
@@ -389,7 +389,7 @@ namespace Server.Commands
                             using (var fileStream = new FileStream(chunkPath, FileMode.Create, FileAccess.Write))
                             using (var contentStream = await response.Content.ReadAsStreamAsync())
                             {
-                                var buffer = new byte[8192]; // 8 KB Buffer
+                                var buffer = new byte[8192]; 
                                 int bytesRead;
                                 long chunkBytesRead = 0;
                                 
@@ -397,17 +397,17 @@ namespace Server.Commands
                                 {
                                     await fileStream.WriteAsync(buffer, 0, bytesRead);
                                     
-                                    // Aktualisiere Fortschritt
+                                    
                                     chunkBytesRead += bytesRead;
                                     totalBytes += bytesRead;
                                     
-                                    // Zeige Fortschritt etwa jede Sekunde an
+                                    
                                     if ((DateTime.Now - lastProgressUpdate).TotalSeconds >= 1)
                                     {
                                         double overallProgress = (double)totalBytes / totalSize * 100;
                                         double chunkProgress = (double)chunkBytesRead / chunk.size * 100;
                                         
-                                        // Berechne die geschätzte verbleibende Zeit
+                                        
                                         var elapsed = DateTime.Now - startTime;
                                         var estimatedTotal = TimeSpan.FromSeconds(elapsed.TotalSeconds / (totalBytes / (double)totalSize));
                                         var remaining = estimatedTotal - elapsed;
@@ -437,7 +437,7 @@ namespace Server.Commands
                 
                 WriteSuccess($"Alle {chunks.Count} Chunks heruntergeladen. Gesamtgröße: {FormatFileSize(totalBytes)}");
                 
-                // Chunks zusammenfügen
+                
                 WriteInfo($"Füge Chunks zu einer Datei zusammen: {outputFilePath}");
                 using (var outputFile = new FileStream(outputFilePath, FileMode.Create, FileAccess.Write))
                 {
@@ -455,12 +455,12 @@ namespace Server.Commands
                             await chunkFile.CopyToAsync(outputFile);
                         }
                         
-                        // Fortschritt anzeigen
+                        
                         WriteInfo($"Chunk {i + 1}/{chunks.Count} zusammengefügt");
                     }
                 }
                 
-                // Aufräumen
+                
                 try
                 {
                     WriteInfo("Räume temporäre Dateien auf...");
@@ -471,7 +471,7 @@ namespace Server.Commands
                     WriteWarning($"Fehler beim Aufräumen der temporären Dateien: {ex.Message}");
                 }
                 
-                // Fertig
+                
                 WriteSuccess($"Download von {gameInfo.Title} abgeschlossen: {outputFilePath}");
                 WriteInfo($"Gesamtgröße: {FormatFileSize(new FileInfo(outputFilePath).Length)}");
             }

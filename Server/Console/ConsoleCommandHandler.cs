@@ -260,7 +260,7 @@ namespace Server.Console
 
                             if (parts.Length == 1)
                             {
-                                // Command autocomplete
+                                
                                 string prefix = parts[0].ToLower();
 
                                 if (_currentSuggestions.Count == 0 || _suggestionIndex == -1)
@@ -297,7 +297,7 @@ namespace Server.Console
                             }
                             else
                             {
-                                // Parameter autocomplete (depends on the command)
+                                
                                 string commandName = parts[0].ToLower();
                                 string currentArg = parts[^1].ToLower();
 
@@ -358,7 +358,7 @@ namespace Server.Console
                             _cursorPosition++;
                             RefreshLine();
 
-                            // Reset autocomplete suggestions when typing
+                            
                             _currentSuggestions.Clear();
                             _suggestionIndex = -1;
                         }
@@ -374,7 +374,7 @@ namespace Server.Console
             int curTop = System.Console.CursorTop;
 
             System.Console.SetCursorPosition(0, curTop);
-            System.Console.Write("> " + _buffer.ToString() + new string(' ', 50)); // Clear line
+            System.Console.Write("> " + _buffer.ToString() + new string(' ', 50)); 
             System.Console.SetCursorPosition(2 + _cursorPosition, curTop);
         }
     }
