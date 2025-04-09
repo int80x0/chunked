@@ -33,7 +33,7 @@ namespace Server
             _services = serviceCollection.BuildServiceProvider();
             
             var logger = _services.GetRequiredService<Logger>();
-            logger.Info("Starting ChunkyBotServer...");
+            logger.Info("Starting Chunky...");
             
             
             var licenseServer = _services.GetRequiredService<LicenseServer>();
