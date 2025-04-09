@@ -1,4 +1,7 @@
-﻿### C++ template
+﻿.idea*
+.idea/*
+
+### C++ template
 # Prerequisites
 *.d
 
