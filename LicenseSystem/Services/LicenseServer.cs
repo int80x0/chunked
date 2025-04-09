@@ -12,8 +12,20 @@ namespace LicenseSystem.Services
         public string Username { get; } = username;
     }
 
+    public enum LogLevel
+    {
+        Debug,
+        Info,
+        Warning,
+        Error
+    }
+
     public sealed class LicenseServer
     {
+        // Logging-related properties
+        private readonly LogLevel _minLogLevel;
+        
+        // Original properties
         private TcpListener _server;
         private readonly int _port;
         private readonly string _usersFilePath;
@@ -24,105 +36,108 @@ namespace LicenseSystem.Services
         public event EventHandler<ClientEventArgs> ClientConnected;
         public event EventHandler<ClientEventArgs> ClientDisconnected;
 
-        public LicenseServer(int port, string usersFilePath)
+        public LicenseServer(int port, string usersFilePath, LogLevel minLogLevel = LogLevel.Info)
         {
             _port = port;
             _usersFilePath = usersFilePath;
             _users = [];
             _connectedClients = new Dictionary<string, TcpClient>();
             _isRunning = false;
+            _minLogLevel = minLogLevel;
+            
+            // When creating an instance, output diagnostic information directly
+            Console.WriteLine($"DIAGNOSTIC: LicenseServer created with LogLevel: {_minLogLevel}");
 
-            // Lade Benutzerdaten aus der JSON-Datei
+            // Load user data from JSON file
             LoadUsers();
-            Console.WriteLine(
-                $"[DEBUG] LicenseServer Konstruktor abgeschlossen. Port: {port}, UsersFile: {usersFilePath}");
+            LogInfo($"LicenseServer constructor completed. Port: {port}, UsersFile: {usersFilePath}, LogLevel: {_minLogLevel}");
         }
 
-        // Starte den Server
+        // Start the server
         public void Start()
         {
             if (_isRunning)
             {
-                Console.WriteLine("[DEBUG] Server läuft bereits, Start wird ignoriert");
+                LogDebug("Server is already running, ignoring Start");
                 return;
             }
 
             try
             {
-                Console.WriteLine($"[DEBUG] Versuche, Server auf Port {_port} zu starten...");
+                LogInfo($"Attempting to start server on port {_port}...");
                 _server = new TcpListener(IPAddress.Any, _port);
                 _server.Start();
                 _isRunning = true;
 
-                Console.WriteLine($"[DEBUG] Server erfolgreich gestartet auf {IPAddress.Any}:{_port}");
+                LogInfo($"Server successfully started on {IPAddress.Any}:{_port}");
 
-                // Starte einen Thread, der auf eingehende Verbindungen wartet
+                // Start a thread to wait for incoming connections
                 Task.Run(AcceptClients);
-                Console.WriteLine("[DEBUG] AcceptClients Task gestartet");
+                LogDebug("AcceptClients task started");
 
-                // Starte einen Thread für regelmäßige Überprüfungen
+                // Start a thread for regular checks
                 Task.Run(MaintenanceTask);
-                Console.WriteLine("[DEBUG] MaintenanceTask Task gestartet");
+                LogDebug("MaintenanceTask started");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] Fehler beim Starten des Servers: {ex.Message}");
-                Console.WriteLine($"[ERROR] StackTrace: {ex.StackTrace}");
+                LogError($"Error starting server: {ex.Message}");
+                LogDebug($"StackTrace: {ex.StackTrace}");
             }
         }
 
-        // Stoppe den Server
+        // Stop the server
         public void Stop()
         {
             if (!_isRunning)
             {
-                Console.WriteLine("[DEBUG] Server läuft nicht, Stop wird ignoriert");
+                LogDebug("Server is not running, ignoring Stop");
                 return;
             }
 
-            Console.WriteLine("[DEBUG] Stoppe Server...");
+            LogInfo("Stopping server...");
             _isRunning = false;
-            DisconnectAllClients("Server wird heruntergefahren.");
+            DisconnectAllClients("Server is shutting down.");
             _server.Stop();
             SaveUsers();
 
-            Console.WriteLine("[DEBUG] Server erfolgreich gestoppt");
+            LogInfo("Server successfully stopped");
         }
 
-        // Akzeptiere eingehende Client-Verbindungen
+        // Accept incoming client connections
         private async Task AcceptClients()
         {
-            Console.WriteLine("[DEBUG] AcceptClients-Schleife gestartet");
+            LogDebug("AcceptClients loop started");
             while (_isRunning)
             {
                 try
                 {
-                    Console.WriteLine("[DEBUG] Warte auf eingehende Verbindung...");
+                    LogDebug("Waiting for incoming connection...");
                     var client = await _server.AcceptTcpClientAsync();
 
                     var endpoint = client.Client.RemoteEndPoint as IPEndPoint;
-                    Console.WriteLine($"[DEBUG] Neue Verbindung von {endpoint?.Address}:{endpoint?.Port}");
+                    LogInfo($"New connection from {endpoint?.Address}:{endpoint?.Port}");
 
                     await Task.Run(() => HandleClient(client));
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[ERROR] Fehler beim Akzeptieren eines Clients: {ex.Message}");
-                    Console.WriteLine($"[ERROR] StackTrace: {ex.StackTrace}");
+                    LogError($"Error accepting client: {ex.Message}");
+                    LogDebug($"StackTrace: {ex.StackTrace}");
 
-                    // Kurze Pause, um CPU-Auslastung zu reduzieren, falls wiederholt Fehler auftreten
+                    // Short pause to reduce CPU usage if errors occur repeatedly
                     await Task.Delay(1000);
                 }
             }
 
-            Console.WriteLine("[DEBUG] AcceptClients-Schleife beendet");
+            LogDebug("AcceptClients loop ended");
         }
 
-        // Behandle einen verbundenen Client
+        // Handle a connected client
         private async Task HandleClient(TcpClient client)
         {
             var clientId = Guid.NewGuid().ToString();
-            Console.WriteLine($"[DEBUG] HandleClient gestartet für Client-ID: {clientId}");
+            LogDebug($"HandleClient started for client ID: {clientId}");
 
             var stream = client.GetStream();
             var reader = new StreamReader(stream, new UTF8Encoding(false));
@@ -130,41 +145,40 @@ namespace LicenseSystem.Services
 
             try
             {
-                Console.WriteLine($"[DEBUG] Client {clientId}: Warte auf Authentifizierungsnachricht...");
+                LogDebug($"Client {clientId}: Waiting for authentication message...");
 
-                // Setze Timeout für Lesevorgänge
+                // Set timeout for read operations
                 var readTask = reader.ReadLineAsync();
-                var timeoutTask = Task.Delay(10000); // 10 Sekunden Timeout
+                var timeoutTask = Task.Delay(10000); // 10 seconds timeout
 
                 await Task.WhenAny(readTask, timeoutTask);
 
                 if (readTask.IsCompleted)
                 {
                     var authMessageJson = await readTask;
-                    Console.WriteLine($"[DEBUG] Client {clientId}: Nachricht empfangen: {authMessageJson}");
+                    LogDebug($"Client {clientId}: Message received: {authMessageJson}");
 
                     if (authMessageJson == null)
                     {
-                        Console.WriteLine($"[DEBUG] Client {clientId}: Keine Nachricht empfangen (null)");
+                        LogDebug($"Client {clientId}: No message received (null)");
                         client.Close();
                         return;
                     }
 
                     try
                     {
-                        Console.WriteLine($"[DEBUG] Client {clientId}: Versuche, Nachricht zu deserialisieren");
+                        LogDebug($"Client {clientId}: Attempting to deserialize message");
                         var authMessage = JsonSerializer.Deserialize<Message>(authMessageJson);
-                        Console.WriteLine(
-                            $"[DEBUG] Client {clientId}: Nachricht deserialisiert. Typ: {authMessage.Type}");
+                        LogDebug($"Client {clientId}: Message deserialized. Type: {authMessage.Type}");
 
                         if (authMessage.Type != "AUTH")
                         {
-                            Console.WriteLine($"[DEBUG] Client {clientId}: Erste Nachricht ist keine AUTH-Nachricht");
-                            // Wenn die erste Nachricht keine Authentifizierung ist, trenne die Verbindung
+                            LogDebug($"Client {clientId}: First message is not an AUTH message");
+                            // If the first message is not an authentication, disconnect
                             SendMessage(writer, new Message
                             {
                                 Type = "DISCONNECT",
-                                Content = "Authentifizierung erforderlich",
+                                Content = "Authentication required",
                                 Sender = "Server",
                                 Timestamp = DateTime.Now
                             });
@@ -172,29 +186,27 @@ namespace LicenseSystem.Services
                             return;
                         }
 
-                        // Authentifizierungsdaten parsen
-                        Console.WriteLine(
-                            $"[DEBUG] Client {clientId}: Parsen der Authentifizierungsdaten. Content: {authMessage.Content}");
+                        // Parse authentication data
+                        LogDebug($"Client {clientId}: Parsing authentication data. Content: {authMessage.Content}");
                         var authData = JsonSerializer.Deserialize<Dictionary<string, string>>(authMessage.Content);
                         var username = authData["username"];
                         var licenseKey = authData["licenseKey"];
-                        Console.WriteLine(
-                            $"[DEBUG] Client {clientId}: Authentifizierungsdaten - Username: {username}, LicenseKey: {licenseKey}");
+                        LogDebug($"Client {clientId}: Authentication data - Username: {username}, LicenseKey: {licenseKey}");
 
-                        // Überprüfe Lizenz
-                        Console.WriteLine($"[DEBUG] Client {clientId}: Überprüfe Lizenz...");
-                        var endpoint = client.Client.RemoteEndPoint?.ToString() ?? "Unbekannt";
+                        // Check license
+                        LogDebug($"Client {clientId}: Checking license...");
+                        var endpoint = client.Client.RemoteEndPoint?.ToString() ?? "Unknown";
                         var authResult = AuthenticateUser(clientId, username, licenseKey, endpoint);
-                        Console.WriteLine($"[DEBUG] Client {clientId}: Authentifizierungsergebnis: {authResult}");
+                        LogDebug($"Client {clientId}: Authentication result: {authResult}");
 
                         if (!authResult)
                         {
-                            Console.WriteLine($"[DEBUG] Client {clientId}: Authentifizierung fehlgeschlagen");
-                            // Bei fehlgeschlagener Authentifizierung, trenne die Verbindung
+                            LogDebug($"Client {clientId}: Authentication failed");
+                            // If authentication fails, disconnect
                             SendMessage(writer, new Message
                             {
                                 Type = "DISCONNECT",
-                                Content = "Ungültige Lizenz oder Benutzername",
+                                Content = "Invalid license or username",
                                 Sender = "Server",
                                 Timestamp = DateTime.Now
                             });
@@ -202,94 +214,90 @@ namespace LicenseSystem.Services
                             return;
                         }
 
-                        // Füge Client zur Liste hinzu
-                        Console.WriteLine($"[DEBUG] Client {clientId}: Füge Client zur Liste hinzu");
+                        // Add client to the list
+                        LogDebug($"Client {clientId}: Adding client to list");
                         lock (_connectedClients)
                         {
                             _connectedClients.Add(clientId, client);
                         }
 
-                        // Löse Event aus
-                        Console.WriteLine($"[DEBUG] Client {clientId}: Löse ClientConnected-Event aus");
+                        // Trigger event
+                        LogDebug($"Client {clientId}: Triggering ClientConnected event");
                         OnClientConnected(clientId, username);
 
-                        // Sende Erfolgsbenachrichtigung
-                        Console.WriteLine($"[DEBUG] Client {clientId}: Sende Erfolgsbenachrichtigung");
+                        // Send success notification
+                        LogDebug($"Client {clientId}: Sending success notification");
                         SendMessage(writer, new Message
                         {
                             Type = "AUTH",
-                            Content = "Authentifizierung erfolgreich",
+                            Content = "Authentication successful",
                             Sender = "Server",
                             Timestamp = DateTime.Now
                         });
 
-                        // Hauptschleife für den Client
-                        Console.WriteLine($"[DEBUG] Client {clientId}: Starte Hauptschleife für Nachrichten");
+                        // Main loop for the client
+                        LogDebug($"Client {clientId}: Starting main loop for messages");
                         while (_isRunning && client.Connected)
                         {
-                            Console.WriteLine($"[DEBUG] Client {clientId}: Warte auf nächste Nachricht...");
+                            LogDebug($"Client {clientId}: Waiting for next message...");
                             string messageJson = await reader.ReadLineAsync();
 
                             if (messageJson == null)
                             {
-                                Console.WriteLine(
-                                    $"[DEBUG] Client {clientId}: Client hat die Verbindung getrennt (null message)");
-                                break; // Client hat die Verbindung getrennt
+                                LogDebug($"Client {clientId}: Client has disconnected (null message)");
+                                break; // Client has disconnected
                             }
 
-                            Console.WriteLine($"[DEBUG] Client {clientId}: Nachricht empfangen: {messageJson}");
+                            LogDebug($"Client {clientId}: Message received: {messageJson}");
 
-                            // Verarbeite Nachricht
+                            // Process message
                             var message = JsonSerializer.Deserialize<Message>(messageJson);
-                            Console.WriteLine(
-                                $"[DEBUG] Client {clientId}: Verarbeite Nachricht vom Typ {message.Type}");
+                            LogDebug($"Client {clientId}: Processing message of type {message.Type}");
                             await ProcessMessage(message, clientId);
                         }
                     }
                     catch (JsonException jsonEx)
                     {
-                        Console.WriteLine(
-                            $"[ERROR] Client {clientId}: Fehler bei der JSON-Deserialisierung: {jsonEx.Message}");
-                        Console.WriteLine($"[ERROR] Details: {jsonEx.StackTrace}");
+                        LogError($"Client {clientId}: Error in JSON deserialization: {jsonEx.Message}");
+                        LogDebug($"Details: {jsonEx.StackTrace}");
                     }
                 }
                 else
                 {
-                    Console.WriteLine(
-                        $"[DEBUG] Client {clientId}: Timeout beim Warten auf Authentifizierungsnachricht");
+                    LogDebug($"Client {clientId}: Timeout waiting for authentication message");
                     client.Close();
                     return;
                 }
             }
             catch (IOException ioEx)
             {
-                Console.WriteLine($"[ERROR] Client {clientId}: IO-Fehler: {ioEx.Message}");
-                Console.WriteLine($"[ERROR] InnerException: {ioEx.InnerException?.Message}");
+                LogError($"Client {clientId}: IO error: {ioEx.Message}");
+                LogDebug($"InnerException: {ioEx.InnerException?.Message}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] Client {clientId}: Allgemeiner Fehler: {ex.Message}");
-                Console.WriteLine($"[ERROR] Typ: {ex.GetType().Name}");
-                Console.WriteLine($"[ERROR] StackTrace: {ex.StackTrace}");
+                LogError($"Client {clientId}: General error: {ex.Message}");
+                LogDebug($"Type: {ex.GetType().Name}");
+                LogDebug($"StackTrace: {ex.StackTrace}");
             }
             finally
             {
-                // Bereinige, wenn der Client die Verbindung trennt
-                Console.WriteLine($"[DEBUG] Client {clientId}: Bereinige Client-Ressourcen");
+                // Clean up when the client disconnects
+                LogDebug($"Client {clientId}: Cleaning up client resources");
                 lock (_connectedClients)
                 {
                     if (_connectedClients.ContainsKey(clientId))
                     {
-                        // Setze den Benutzer auf offline
+                        // Set the user to offline
                         var user = _users.FirstOrDefault(u => u.ClientId == clientId);
                         if (user != null)
                         {
-                            Console.WriteLine($"[DEBUG] Client {clientId}: Setze Benutzer {user.Username} auf offline");
+                            LogDebug($"Client {clientId}: Setting user {user.Username} to offline");
                             user.IsOnline = false;
                             user.ClientId = null;
                             SaveUsers();
 
-                            // Löse Event aus
+                            // Trigger event
                             OnClientDisconnected(clientId, user.Username);
                         }
 
@@ -300,50 +308,49 @@ namespace LicenseSystem.Services
                 try
                 {
                     client.Close();
-                    Console.WriteLine($"[DEBUG] Client {clientId}: Client-Verbindung geschlossen");
+                    LogDebug($"Client {clientId}: Client connection closed");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[ERROR] Client {clientId}: Fehler beim Schließen des Clients: {ex.Message}");
+                    LogError($"Client {clientId}: Error closing client: {ex.Message}");
                 }
             }
         }
 
-        // Verarbeite eine Nachricht vom Client
+        // Process a message from the client
         private async Task ProcessMessage(Message message, string clientId)
         {
-            Console.WriteLine($"[DEBUG] ProcessMessage: Nachricht erhalten: {message.Type} von {clientId}");
+            LogDebug($"ProcessMessage: Message received: {message.Type} from {clientId}");
 
             switch (message.Type)
             {
                 case "COMMAND":
-                    Console.WriteLine($"[DEBUG] ProcessMessage: Verarbeite COMMAND von {clientId}: {message.Content}");
-                    // Verarbeite Client-Befehle
-                    // Hier könntest du erweiterte Funktionen implementieren
+                    LogDebug($"ProcessMessage: Processing COMMAND from {clientId}: {message.Content}");
+                    // Process client commands
+                    // Here you could implement advanced functions
                     break;
 
                 case "DISCONNECT":
-                    Console.WriteLine($"[DEBUG] ProcessMessage: Client {clientId} möchte sich selbst trennen");
-                    // Client möchte sich selbst trennen
+                    LogDebug($"ProcessMessage: Client {clientId} wants to disconnect");
+                    // Client wants to disconnect
                     lock (_connectedClients)
                     {
                         if (_connectedClients.TryGetValue(clientId, out TcpClient client))
                         {
-                            Console.WriteLine($"[DEBUG] ProcessMessage: Trenne Client {clientId}");
+                            LogDebug($"ProcessMessage: Disconnecting client {clientId}");
                             client.Close();
                             _connectedClients.Remove(clientId);
 
-                            // Setze den Benutzer auf offline
+                            // Set the user to offline
                             var user = _users.FirstOrDefault(u => u.ClientId == clientId);
                             if (user != null)
                             {
-                                Console.WriteLine(
-                                    $"[DEBUG] ProcessMessage: Setze Benutzer {user.Username} auf offline");
+                                LogDebug($"ProcessMessage: Setting user {user.Username} to offline");
                                 user.IsOnline = false;
                                 user.ClientId = null;
                                 SaveUsers();
 
-                                // Löse Event aus
+                                // Trigger event
                                 OnClientDisconnected(clientId, user.Username);
                             }
                         }
@@ -352,33 +359,33 @@ namespace LicenseSystem.Services
                     break;
 
                 default:
-                    Console.WriteLine($"[DEBUG] ProcessMessage: Unbekannter Nachrichtentyp: {message.Type}");
+                    LogDebug($"ProcessMessage: Unknown message type: {message.Type}");
                     break;
             }
         }
 
-        // Authentifiziere einen Benutzer
+        // Authenticate a user
         private bool AuthenticateUser(string clientId, string username, string licenseKey, string ipAddress)
         {
-            Console.WriteLine($"[DEBUG] AuthenticateUser: Authenticating user {username} with license {licenseKey}");
+            LogDebug($"AuthenticateUser: Authenticating user {username} with license {licenseKey}");
             lock (_users)
             {
-                // Suche nach Benutzer mit dem angegebenen Lizenzschlüssel
+                // Look for user with the specified license key
                 var user = _users.FirstOrDefault(u => u.LicenseKey == licenseKey);
-                Console.WriteLine($"[DEBUG] AuthenticateUser: User found: {user != null}");
+                LogDebug($"AuthenticateUser: User found: {user != null}");
 
-                // Wenn Benutzer nicht existiert, erstelle einen neuen
+                // If user doesn't exist, create a new one
                 if (user == null)
                 {
-                    Console.WriteLine($"[DEBUG] AuthenticateUser: Neuer Benutzer, prüfe Lizenzschlüssel");
-                    // Überprüfe, ob der Lizenzschlüssel gültig ist
+                    LogDebug($"AuthenticateUser: New user, checking license key");
+                    // Check if the license key is valid
                     if (!IsValidLicenseKey(licenseKey))
                     {
-                        Console.WriteLine($"[DEBUG] AuthenticateUser: Ungültiger Lizenzschlüssel: {licenseKey}");
+                        LogDebug($"AuthenticateUser: Invalid license key: {licenseKey}");
                         return false;
                     }
 
-                    Console.WriteLine($"[DEBUG] AuthenticateUser: Erstelle neuen Benutzer für {username}");
+                    LogDebug($"AuthenticateUser: Creating new user for {username}");
                     user = new User
                     {
                         Username = username,
@@ -386,112 +393,111 @@ namespace LicenseSystem.Services
                         FirstLogin = DateTime.Now,
                         LastLogin = DateTime.Now,
                         LicenseKey = licenseKey,
-                        LicenseExpiration = DateTime.Now.AddDays(30), // Standard: 30 Tage Lizenz
-                        RateLimit = 100, // Standard Rate-Limit
+                        LicenseExpiration = DateTime.Now.AddDays(30), // Default: 30 days license
+                        RateLimit = 100, // Default rate limit
                         IsOnline = true,
                         ClientId = clientId
                     };
 
                     _users.Add(user);
-                    Console.WriteLine($"[DEBUG] AuthenticateUser: Neuer Benutzer erstellt und hinzugefügt");
+                    LogInfo($"AuthenticateUser: New user created and added: {username}");
                 }
                 else
                 {
-                    Console.WriteLine($"[DEBUG] AuthenticateUser: Bestehender Benutzer gefunden, prüfe Lizenz");
-                    // Überprüfe, ob die Lizenz abgelaufen ist
+                    LogDebug($"AuthenticateUser: Existing user found, checking license");
+                    // Check if the license has expired
                     if (user.LicenseExpiration < DateTime.Now)
                     {
-                        Console.WriteLine($"[DEBUG] AuthenticateUser: Lizenz abgelaufen am {user.LicenseExpiration}");
+                        LogDebug($"AuthenticateUser: License expired on {user.LicenseExpiration}");
                         return false;
                     }
 
-                    // Überprüfe, ob der Benutzer bereits online ist
+                    // Check if the user is already online
                     if (user.IsOnline)
                     {
-                        Console.WriteLine(
-                            $"[DEBUG] AuthenticateUser: Benutzer ist bereits online mit ClientId {user.ClientId}");
-                        // Trenne den alten Client, wenn vorhanden
+                        LogDebug($"AuthenticateUser: User is already online with ClientId {user.ClientId}");
+                        // Disconnect the old client, if present
                         if (!string.IsNullOrEmpty(user.ClientId) && user.ClientId != clientId)
                         {
-                            Console.WriteLine($"[DEBUG] AuthenticateUser: Trenne alten Client {user.ClientId}");
+                            LogDebug($"AuthenticateUser: Disconnecting old client {user.ClientId}");
                             DisconnectClient(user.ClientId,
-                                "Ein anderer Client hat sich mit deiner Lizenz angemeldet.");
+                                "Another client has connected with your license.");
                         }
                     }
 
-                    // Aktualisiere Benutzerdaten
-                    Console.WriteLine($"[DEBUG] AuthenticateUser: Aktualisiere Benutzerdaten für {username}");
-                    user.Username = username; // Erlaube Aktualisierung des Benutzernamens
+                    // Update user data
+                    LogDebug($"AuthenticateUser: Updating user data for {username}");
+                    user.Username = username; // Allow updating the username
                     user.IP = ipAddress;
                     user.LastLogin = DateTime.Now;
                     user.IsOnline = true;
                     user.ClientId = clientId;
                 }
 
-                // Speichere aktualisierte Benutzerdaten
-                Console.WriteLine($"[DEBUG] AuthenticateUser: Speichere aktualisierte Benutzerdaten");
+                // Save updated user data
+                LogDebug($"AuthenticateUser: Saving updated user data");
                 SaveUsers();
 
                 return true;
             }
         }
 
-        // Überprüfe, ob ein Lizenzschlüssel gültig ist
+        // Check if a license key is valid
         private bool IsValidLicenseKey(string licenseKey)
         {
-            Console.WriteLine($"[DEBUG] IsValidLicenseKey: Prüfe Lizenzschlüssel: {licenseKey}");
-            // Hier kannst du deine eigene Logik zur Überprüfung von Lizenzschlüsseln implementieren
-            // Beispiel: Prüfe auf eine bestimmte Länge und ein Format
+            LogDebug($"IsValidLicenseKey: Checking license key: {licenseKey}");
+            // Here you can implement your own logic to verify license keys
+            // Example: Check for a specific length and format
             if (string.IsNullOrEmpty(licenseKey) || licenseKey.Length != 20)
             {
-                Console.WriteLine($"[DEBUG] IsValidLicenseKey: Ungültige Länge: {licenseKey?.Length ?? 0}");
+                LogDebug($"IsValidLicenseKey: Invalid length: {licenseKey?.Length ?? 0}");
                 return false;
             }
 
-            // Beispiel: Lizenzschlüssel muss mit "LICS-" beginnen
+            // Example: License key must start with "LICS-"
             if (!licenseKey.StartsWith("LICS-"))
             {
-                Console.WriteLine($"[DEBUG] IsValidLicenseKey: Beginnt nicht mit LICS-");
+                LogDebug($"IsValidLicenseKey: Doesn't start with LICS-");
                 return false;
             }
 
-            Console.WriteLine($"[DEBUG] IsValidLicenseKey: Lizenzschlüssel ist gültig");
+            LogDebug($"IsValidLicenseKey: License key is valid");
             return true;
         }
 
-        // Sende eine Nachricht an einen Client
+        // Send a message to a client
         private void SendMessage(StreamWriter writer, Message message)
         {
-            Console.WriteLine($"[DEBUG] SendMessage: Sende Nachricht vom Typ {message.Type}");
+            LogDebug($"SendMessage: Sending message of type {message.Type}");
             try
             {
                 var messageJson = JsonSerializer.Serialize(message);
-                Console.WriteLine($"[DEBUG] SendMessage: Serialisierte Nachricht: {messageJson}");
+                LogDebug($"SendMessage: Serialized message: {messageJson}");
                 writer.WriteLine(messageJson);
-                Console.WriteLine($"[DEBUG] SendMessage: Nachricht gesendet");
+                LogDebug($"SendMessage: Message sent");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] SendMessage: Fehler beim Senden der Nachricht: {ex.Message}");
+                LogError($"SendMessage: Error sending message: {ex.Message}");
             }
         }
 
         private void OnClientConnected(string clientId, string username)
         {
-            Console.WriteLine($"[DEBUG] OnClientConnected: Event für {username} (ID: {clientId})");
+            LogDebug($"OnClientConnected: Event for {username} (ID: {clientId})");
             ClientConnected?.Invoke(this, new ClientEventArgs(clientId, username));
         }
 
         private void OnClientDisconnected(string clientId, string username)
         {
-            Console.WriteLine($"[DEBUG] OnClientDisconnected: Event für {username} (ID: {clientId})");
+            LogDebug($"OnClientDisconnected: Event for {username} (ID: {clientId})");
             ClientDisconnected?.Invoke(this, new ClientEventArgs(clientId, username));
         }
 
-        // Sende eine Nachricht an alle verbundenen Clients
+        // Send a message to all connected clients
         public void BroadcastMessage(string content, string messageType = "NOTIFICATION")
         {
-            Console.WriteLine($"[DEBUG] BroadcastMessage: Sende Broadcast-Nachricht: {content}");
+            LogInfo($"BroadcastMessage: Sending broadcast message: {content}");
             var message = new Message
             {
                 Type = messageType,
@@ -501,11 +507,11 @@ namespace LicenseSystem.Services
             };
 
             var messageJson = JsonSerializer.Serialize(message);
-            Console.WriteLine($"[DEBUG] BroadcastMessage: Serialisierte Nachricht: {messageJson}");
+            LogDebug($"BroadcastMessage: Serialized message: {messageJson}");
 
             lock (_connectedClients)
             {
-                Console.WriteLine($"[DEBUG] BroadcastMessage: Sende an {_connectedClients.Count} Clients");
+                LogDebug($"BroadcastMessage: Sending to {_connectedClients.Count} clients");
                 foreach (var client in _connectedClients.Values)
                 {
                     try
@@ -515,16 +521,16 @@ namespace LicenseSystem.Services
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[ERROR] BroadcastMessage: Fehler beim Senden: {ex.Message}");
+                        LogError($"BroadcastMessage: Error sending: {ex.Message}");
                     }
                 }
             }
         }
 
-        // Sende eine Nachricht an einen bestimmten Client
+        // Send a message to a specific client
         public void SendMessageToClient(string clientId, string content, string messageType = "NOTIFICATION")
         {
-            Console.WriteLine($"[DEBUG] SendMessageToClient: Sende Nachricht an Client {clientId}: {content}");
+            LogInfo($"SendMessageToClient: Sending message to client {clientId}: {content}");
             Message message = new Message
             {
                 Type = messageType,
@@ -534,13 +540,13 @@ namespace LicenseSystem.Services
             };
 
             var messageJson = JsonSerializer.Serialize(message);
-            Console.WriteLine($"[DEBUG] SendMessageToClient: Serialisierte Nachricht: {messageJson}");
+            LogDebug($"SendMessageToClient: Serialized message: {messageJson}");
 
             lock (_connectedClients)
             {
                 if (!_connectedClients.TryGetValue(clientId, out TcpClient client))
                 {
-                    Console.WriteLine($"[DEBUG] SendMessageToClient: Client {clientId} nicht gefunden");
+                    LogDebug($"SendMessageToClient: Client {clientId} not found");
                     return;
                 }
 
@@ -548,31 +554,31 @@ namespace LicenseSystem.Services
                 {
                     var writer = new StreamWriter(client.GetStream(), new UTF8Encoding(false)) { AutoFlush = true };
                     writer.WriteLine(messageJson);
-                    Console.WriteLine($"[DEBUG] SendMessageToClient: Nachricht gesendet");
+                    LogDebug($"SendMessageToClient: Message sent");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[ERROR] SendMessageToClient: Fehler beim Senden: {ex.Message}");
+                    LogError($"SendMessageToClient: Error sending: {ex.Message}");
                 }
             }
         }
 
-        // Trenne die Verbindung zu einem Client
+        // Disconnect a client
         public void DisconnectClient(string clientId, string reason)
         {
-            Console.WriteLine($"[DEBUG] DisconnectClient: Trenne Client {clientId}. Grund: {reason}");
+            LogInfo($"DisconnectClient: Disconnecting client {clientId}. Reason: {reason}");
             lock (_connectedClients)
             {
                 if (!_connectedClients.TryGetValue(clientId, out TcpClient client))
                 {
-                    Console.WriteLine($"[DEBUG] DisconnectClient: Client {clientId} nicht gefunden");
+                    LogDebug($"DisconnectClient: Client {clientId} not found");
                     return;
                 }
 
                 try
                 {
-                    // Sende Trennungsnachricht
-                    Console.WriteLine($"[DEBUG] DisconnectClient: Sende Trennungsnachricht");
+                    // Send disconnect message
+                    LogDebug($"DisconnectClient: Sending disconnect message");
                     var writer = new StreamWriter(client.GetStream(), Encoding.UTF8) { AutoFlush = true };
                     SendMessage(writer, new Message
                     {
@@ -582,42 +588,41 @@ namespace LicenseSystem.Services
                         Timestamp = DateTime.Now
                     });
 
-                    // Schließe die Verbindung
-                    Console.WriteLine($"[DEBUG] DisconnectClient: Schließe Verbindung");
+                    // Close the connection
+                    LogDebug($"DisconnectClient: Closing connection");
                     client.Close();
                     _connectedClients.Remove(clientId);
 
-                    // Aktualisiere Benutzerstatus
+                    // Update user status
                     var user = _users.FirstOrDefault(u => u.ClientId == clientId);
                     if (user != null)
                     {
-                        Console.WriteLine($"[DEBUG] DisconnectClient: Setze Benutzer {user.Username} auf offline");
+                        LogDebug($"DisconnectClient: Setting user {user.Username} to offline");
                         user.IsOnline = false;
                         string username = user.Username;
                         user.ClientId = null;
                         SaveUsers();
 
-                        // Löse Event aus
+                        // Trigger event
                         OnClientDisconnected(clientId, username);
                     }
 
-                    Console.WriteLine($"[DEBUG] DisconnectClient: Client {clientId} erfolgreich getrennt");
+                    LogDebug($"DisconnectClient: Client {clientId} successfully disconnected");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(
-                        $"[ERROR] DisconnectClient: Fehler beim Trennen des Clients {clientId}: {ex.Message}");
+                    LogError($"DisconnectClient: Error disconnecting client {clientId}: {ex.Message}");
                 }
             }
         }
 
-        // Trenne alle verbundenen Clients
+        // Disconnect all connected clients
         public void DisconnectAllClients(string reason)
         {
-            Console.WriteLine($"[DEBUG] DisconnectAllClients: Trenne alle Clients. Grund: {reason}");
+            LogInfo($"DisconnectAllClients: Disconnecting all clients. Reason: {reason}");
             lock (_connectedClients)
             {
-                Console.WriteLine($"[DEBUG] DisconnectAllClients: {_connectedClients.Count} Clients zu trennen");
+                LogDebug($"DisconnectAllClients: {_connectedClients.Count} clients to disconnect");
                 foreach (var clientId in _connectedClients.Keys.ToList())
                 {
                     DisconnectClient(clientId, reason);
@@ -625,45 +630,45 @@ namespace LicenseSystem.Services
             }
         }
 
-        // Lade Benutzerdaten aus der JSON-Datei
+        // Load user data from JSON file
         private void LoadUsers()
         {
-            Console.WriteLine($"[DEBUG] LoadUsers: Lade Benutzerdaten aus {_usersFilePath}");
+            LogDebug($"LoadUsers: Loading user data from {_usersFilePath}");
             try
             {
                 if (!File.Exists(_usersFilePath))
                 {
-                    Console.WriteLine($"[DEBUG] LoadUsers: Datei existiert nicht, erstelle leere Benutzerliste");
+                    LogDebug($"LoadUsers: File doesn't exist, creating empty user list");
                     return;
                 }
 
                 var json = File.ReadAllText(_usersFilePath);
-                Console.WriteLine($"[DEBUG] LoadUsers: JSON geladen, Länge: {json.Length} Zeichen");
+                LogDebug($"LoadUsers: JSON loaded, length: {json.Length} characters");
                 _users = JsonSerializer.Deserialize<List<User>>(json) ??
-                         throw new InvalidOperationException("Deserialisierung ergab null");
-                Console.WriteLine($"[DEBUG] LoadUsers: {_users.Count} Benutzer geladen");
+                         throw new InvalidOperationException("Deserialization resulted in null");
+                LogInfo($"LoadUsers: {_users.Count} users loaded");
 
-                // Setze alle Benutzer auf offline beim Laden
+                // Set all users to offline when loading
                 foreach (var user in _users)
                 {
                     user.IsOnline = false;
                     user.ClientId = null;
                 }
 
-                Console.WriteLine("[DEBUG] LoadUsers: Alle Benutzer auf offline gesetzt");
+                LogDebug("LoadUsers: All users set to offline");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] LoadUsers: Fehler beim Laden der Benutzerdaten: {ex.Message}");
-                Console.WriteLine($"[ERROR] LoadUsers: {ex.StackTrace}");
+                LogError($"LoadUsers: Error loading user data: {ex.Message}");
+                LogDebug($"LoadUsers: {ex.StackTrace}");
                 _users = [];
             }
         }
 
-        // Speichere Benutzerdaten in die JSON-Datei
+        // Save user data to JSON file
         private void SaveUsers()
         {
-            Console.WriteLine($"[DEBUG] SaveUsers: Speichere {_users.Count} Benutzer in {_usersFilePath}");
+            LogDebug($"SaveUsers: Saving {_users.Count} users to {_usersFilePath}");
             try
             {
                 var options = new JsonSerializerOptions
@@ -672,79 +677,76 @@ namespace LicenseSystem.Services
                 };
 
                 var json = JsonSerializer.Serialize(_users, options);
-                Console.WriteLine($"[DEBUG] SaveUsers: JSON serialisiert, Länge: {json.Length} Zeichen");
+                LogDebug($"SaveUsers: JSON serialized, length: {json.Length} characters");
                 File.WriteAllText(_usersFilePath, json);
-                Console.WriteLine("[DEBUG] SaveUsers: Benutzerdaten erfolgreich gespeichert");
+                LogDebug("SaveUsers: User data successfully saved");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] SaveUsers: Fehler beim Speichern der Benutzerdaten: {ex.Message}");
-                Console.WriteLine($"[ERROR] SaveUsers: {ex.StackTrace}");
+                LogError($"SaveUsers: Error saving user data: {ex.Message}");
+                LogDebug($"SaveUsers: {ex.StackTrace}");
             }
         }
 
-        // Regelmäßige Wartungsaufgaben
+        // Regular maintenance tasks
         private async Task MaintenanceTask()
         {
-            Console.WriteLine("[DEBUG] MaintenanceTask: Task gestartet");
+            LogDebug("MaintenanceTask: Task started");
             while (_isRunning)
             {
-                Console.WriteLine("[DEBUG] MaintenanceTask: Führe Wartungsarbeiten durch");
-                // Überprüfe abgelaufene Lizenzen
+                LogDebug("MaintenanceTask: Performing maintenance");
+                // Check for expired licenses
                 CheckExpiredLicenses();
 
-                // Warte 1 Stunde bis zur nächsten Überprüfung
-                Console.WriteLine("[DEBUG] MaintenanceTask: Warte 1 Stunde bis zur nächsten Überprüfung");
+                // Wait 1 hour until the next check
+                LogDebug("MaintenanceTask: Waiting 1 hour until next check");
                 await Task.Delay(TimeSpan.FromHours(1));
             }
 
-            Console.WriteLine("[DEBUG] MaintenanceTask: Task beendet");
+            LogDebug("MaintenanceTask: Task ended");
         }
 
-        // Überprüfe auf abgelaufene Lizenzen
+        // Check for expired licenses
         private void CheckExpiredLicenses()
         {
-            Console.WriteLine("[DEBUG] CheckExpiredLicenses: Prüfe auf abgelaufene Lizenzen");
+            LogDebug("CheckExpiredLicenses: Checking for expired licenses");
             lock (_users)
             {
                 var expiredUsers = _users.Where(u => u.IsOnline && u.LicenseExpiration < DateTime.Now).ToList();
-                Console.WriteLine($"[DEBUG] CheckExpiredLicenses: {expiredUsers.Count} abgelaufene Lizenzen gefunden");
+                LogDebug($"CheckExpiredLicenses: {expiredUsers.Count} expired licenses found");
 
                 foreach (var user in expiredUsers)
                 {
-                    Console.WriteLine(
-                        $"[DEBUG] CheckExpiredLicenses: Lizenz für {user.Username} ist abgelaufen. Ablaufdatum: {user.LicenseExpiration}");
-                    DisconnectClient(user.ClientId, "Deine Lizenz ist abgelaufen.");
+                    LogDebug($"CheckExpiredLicenses: License for {user.Username} has expired. Expiration date: {user.LicenseExpiration}");
+                    DisconnectClient(user.ClientId, "Your license has expired.");
                 }
             }
         }
 
-        // Methode zum Verlängern einer Lizenz
+        // Method to extend a license
         public bool ExtendLicense(string licenseKey, int days)
         {
-            Console.WriteLine($"[DEBUG] ExtendLicense: Verlängere Lizenz {licenseKey} um {days} Tage");
+            LogInfo($"ExtendLicense: Extending license {licenseKey} by {days} days");
             lock (_users)
             {
                 var user = _users.FirstOrDefault(u => u.LicenseKey == licenseKey);
                 if (user == null)
                 {
-                    Console.WriteLine($"[DEBUG] ExtendLicense: Benutzer mit Lizenz {licenseKey} nicht gefunden");
+                    LogDebug($"ExtendLicense: User with license {licenseKey} not found");
                     return false;
                 }
 
                 var oldExpiration = user.LicenseExpiration;
                 user.LicenseExpiration = user.LicenseExpiration.AddDays(days);
-                Console.WriteLine(
-                    $"[DEBUG] ExtendLicense: Lizenz verlängert von {oldExpiration} auf {user.LicenseExpiration}");
+                LogDebug($"ExtendLicense: License extended from {oldExpiration} to {user.LicenseExpiration}");
                 SaveUsers();
 
-                // Benachrichtige den Benutzer, wenn er online ist
+                // Notify the user if they are online
                 if (user.IsOnline && !string.IsNullOrEmpty(user.ClientId))
                 {
-                    Console.WriteLine(
-                        $"[DEBUG] ExtendLicense: Benachrichtige Benutzer {user.Username} über Lizenzverlängerung");
+                    LogDebug($"ExtendLicense: Notifying user {user.Username} about license extension");
                     SendMessageToClient(user.ClientId,
-                        $"Deine Lizenz wurde um {days} Tage verlängert. Neues Ablaufdatum: {user.LicenseExpiration}");
+                        $"Your license has been extended by {days} days. New expiration date: {user.LicenseExpiration}");
                 }
 
                 return true;
@@ -764,6 +766,39 @@ namespace LicenseSystem.Services
             lock (_users)
             {
                 return _users.ToList();
+            }
+        }
+        
+        // Logging methods - strictly respect log level settings
+        private void LogDebug(string message)
+        {
+            if (_minLogLevel <= LogLevel.Debug)
+            {
+                Console.WriteLine($"[DEBUG] {message}");
+            }
+        }
+
+        private void LogInfo(string message)
+        {
+            if (_minLogLevel <= LogLevel.Info)
+            {
+                Console.WriteLine($"[INFO] {message}");
+            }
+        }
+
+        private void LogWarning(string message)
+        {
+            if (_minLogLevel <= LogLevel.Warning)
+            {
+                Console.WriteLine($"[WARNING] {message}");
+            }
+        }
+
+        private void LogError(string message)
+        {
+            if (_minLogLevel <= LogLevel.Error)
+            {
+                Console.WriteLine($"[ERROR] {message}");
             }
         }
     }

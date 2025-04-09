@@ -3,16 +3,16 @@ using Microsoft.Extensions.Configuration;
 
 namespace Server.Utils
 {
+    public enum LogLevel
+    {
+        Debug,
+        Info,
+        Warning,
+        Error
+    }
+
     public class Logger
     {
-        private enum LogLevel
-        {
-            Debug,
-            Info,
-            Warning,
-            Error
-        }
-
         private readonly object _lock = new object();
         private readonly string _logFilePath;
         private readonly LogLevel _minLevel;
@@ -46,13 +46,25 @@ namespace Server.Utils
                 _minLevel = LogLevel.Info;
             }
 
-            if (!_logToFile) return;
-            var logDirectory = Path.GetDirectoryName(_logFilePath);
-            if (!string.IsNullOrEmpty(logDirectory) && !Directory.Exists(logDirectory))
+            if (_logToFile)
             {
-                Directory.CreateDirectory(logDirectory);
+                var logDirectory = Path.GetDirectoryName(_logFilePath);
+                if (!string.IsNullOrEmpty(logDirectory) && !Directory.Exists(logDirectory))
+                {
+                    Directory.CreateDirectory(logDirectory);
+                }
             }
+            
+            // Always print this diagnostic message regardless of settings
+            System.Console.WriteLine($"DIAGNOSTIC: Logger initialized with Level: {_minLevel}, Console: {_logToConsole}, File: {_logToFile}");
         }
+        
+        // Property to check current log level
+        public LogLevel MinimumLevel => _minLevel;
+        
+        // Properties to check logging targets
+        public bool LogToConsole => _logToConsole;
+        public bool LogToFile => _logToFile;
 
         public void Debug(string message)
         {
@@ -104,20 +116,23 @@ namespace Server.Utils
 
         private void WriteToConsole(LogLevel level, string message)
         {
+            // Double-check that we should log to console
+            if (!_logToConsole) return;
+            
             lock (_lock)
             {
                 var oldColor = System.Console.ForegroundColor;
-
                 System.Console.ForegroundColor = LevelColors[(int)level];
-
                 System.Console.WriteLine(message);
-
                 System.Console.ForegroundColor = oldColor;
             }
         }
 
         private async Task WriteToFileAsync(string message)
         {
+            // Double-check that we should log to file
+            if (!_logToFile) return;
+            
             try
             {
                 message += Environment.NewLine;
@@ -133,7 +148,7 @@ namespace Server.Utils
                 {
                     var oldColor = System.Console.ForegroundColor;
                     System.Console.ForegroundColor = ConsoleColor.Red;
-                    System.Console.WriteLine($"Fehler beim Schreiben ins Logfile: {ex.Message}");
+                    System.Console.WriteLine($"Error writing to log file: {ex.Message}");
                     System.Console.ForegroundColor = oldColor;
                 }
             }

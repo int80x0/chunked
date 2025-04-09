@@ -21,37 +21,43 @@ namespace Server.Server
 
             _licenseServer.ClientConnected += OnClientConnected;
             _licenseServer.ClientDisconnected += OnClientDisconnected;
+            
+            _logger.Debug("ServerHandler initialized");
         }
         
         private void OnClientConnected(object sender, ClientEventArgs args)
         {
-            _logger.Info($"Client verbunden: {args.Username} (ID: {args.ClientId})");
+            _logger.Info($"Client connected: {args.Username} (ID: {args.ClientId})");
             
             try
             {
-                
+                // Welcome message or other initialization could be added here
+                _logger.Debug($"Client {args.Username} connected successfully");
             }
             catch (Exception ex)
             {
-                _logger.Error($"Fehler beim Senden der Begrüßungsnachricht: {ex.Message}");
+                _logger.Error($"Error sending welcome message: {ex.Message}");
+                _logger.Debug($"Stack trace: {ex.StackTrace}");
             }
         }
         
         private void OnClientDisconnected(object sender, ClientEventArgs args)
         {
-            _logger.Info($"Client getrennt: {args.Username} (ID: {args.ClientId})");
+            _logger.Info($"Client disconnected: {args.Username} (ID: {args.ClientId})");
         }
         
         public void BroadcastMessage(string message, string source = "Server")
         {
             try
             {
+                _logger.Debug($"Broadcasting message from {source}: {message}");
                 _licenseServer.BroadcastMessage(message);
-                _logger.Info($"Broadcast-Nachricht gesendet: {message}");
+                _logger.Info($"Broadcast message sent: {message}");
             }
             catch (Exception ex)
             {
-                _logger.Error($"Fehler beim Senden einer Broadcast-Nachricht: {ex.Message}");
+                _logger.Error($"Error sending broadcast message: {ex.Message}");
+                _logger.Debug($"Stack trace: {ex.StackTrace}");
             }
         }
         
@@ -59,38 +65,44 @@ namespace Server.Server
         {
             try
             {
+                _logger.Debug($"Sending message to client {clientId}: {message}");
                 _licenseServer.SendMessageToClient(clientId, message);
-                _logger.Info($"Nachricht an Client {clientId} gesendet: {message}");
+                _logger.Info($"Message sent to client {clientId}");
             }
             catch (Exception ex)
             {
-                _logger.Error($"Fehler beim Senden einer Nachricht an Client {clientId}: {ex.Message}");
+                _logger.Error($"Error sending message to client {clientId}: {ex.Message}");
+                _logger.Debug($"Stack trace: {ex.StackTrace}");
             }
         }
         
-        public void DisconnectClient(string clientId, string reason = "Vom Server getrennt")
+        public void DisconnectClient(string clientId, string reason = "Disconnected by server")
         {
             try
             {
+                _logger.Debug($"Disconnecting client {clientId}. Reason: {reason}");
                 _licenseServer.DisconnectClient(clientId, reason);
-                _logger.Info($"Client {clientId} getrennt. Grund: {reason}");
+                _logger.Info($"Client {clientId} disconnected. Reason: {reason}");
             }
             catch (Exception ex)
             {
-                _logger.Error($"Fehler beim Trennen des Clients {clientId}: {ex.Message}");
+                _logger.Error($"Error disconnecting client {clientId}: {ex.Message}");
+                _logger.Debug($"Stack trace: {ex.StackTrace}");
             }
         }
         
-        public void DisconnectAllClients(string reason = "Vom Server getrennt")
+        public void DisconnectAllClients(string reason = "Disconnected by server")
         {
             try
             {
+                _logger.Debug($"Disconnecting all clients. Reason: {reason}");
                 _licenseServer.DisconnectAllClients(reason);
-                _logger.Info($"Alle Clients getrennt. Grund: {reason}");
+                _logger.Info($"All clients disconnected. Reason: {reason}");
             }
             catch (Exception ex)
             {
-                _logger.Error($"Fehler beim Trennen aller Clients: {ex.Message}");
+                _logger.Error($"Error disconnecting all clients: {ex.Message}");
+                _logger.Debug($"Stack trace: {ex.StackTrace}");
             }
         }
         
@@ -98,21 +110,23 @@ namespace Server.Server
         {
             try
             {
+                _logger.Debug($"Extending license {licenseKey} by {days} days");
                 var result = _licenseServer.ExtendLicense(licenseKey, days);
                 if (result)
                 {
-                    _logger.Info($"Lizenz {licenseKey} um {days} Tage verlängert.");
+                    _logger.Info($"License {licenseKey} extended by {days} days.");
                 }
                 else
                 {
-                    _logger.Warning($"Lizenz {licenseKey} konnte nicht verlängert werden.");
+                    _logger.Warning($"License {licenseKey} could not be extended.");
                 }
 
                 return result;
             }
             catch (Exception ex)
             {
-                _logger.Error($"Fehler beim Verlängern der Lizenz {licenseKey}: {ex.Message}");
+                _logger.Error($"Error extending license {licenseKey}: {ex.Message}");
+                _logger.Debug($"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }

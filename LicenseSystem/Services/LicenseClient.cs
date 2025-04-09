@@ -1,6 +1,7 @@
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Diagnostics;
 using LicenseSystem.Models;
 
 namespace LicenseSystem.Services
@@ -27,6 +28,7 @@ namespace LicenseSystem.Services
         private CancellationTokenSource _cts;
         private string _username;
         private string _licenseKey;
+        private readonly bool _isDebug;
 
         public event EventHandler<MessageReceivedEventArgs> MessageReceived;
         public event EventHandler<ConnectionStatusEventArgs> ConnectionStatusChanged;
@@ -39,17 +41,24 @@ namespace LicenseSystem.Services
             _serverPort = serverPort;
             IsConnected = false;
             _cts = new CancellationTokenSource();
+            
+            // Determine if we're in debug mode
+            #if DEBUG
+            _isDebug = true;
+            #else
+            _isDebug = false;
+            #endif
 
-            //Console.WriteLine($"[DEBUG] LicenseClient erstellt. Server: {serverAddress}:{serverPort}");
+            LogDebug($"LicenseClient created. Server: {serverAddress}:{serverPort}");
         }
 
         public async Task<bool> ConnectAsync(string username, string licenseKey)
         {
-            //Console.WriteLine($"[DEBUG] ConnectAsync: Versuche, eine Verbindung zum Server herzustellen. Username: {username}");
+            LogDebug($"ConnectAsync: Attempting to connect to server. Username: {username}");
 
             if (IsConnected)
             {
-                //Console.WriteLine("[DEBUG] ConnectAsync: Bereits verbunden");
+                LogDebug("ConnectAsync: Already connected");
                 return true;
             }
 
@@ -59,14 +68,14 @@ namespace LicenseSystem.Services
                 _licenseKey = licenseKey;
                 _client = new TcpClient();
 
-                Console.WriteLine($"[DEBUG] ConnectAsync: Verbinde zu {_serverAddress}:{_serverPort}...");
+                LogInfo($"ConnectAsync: Connecting to {_serverAddress}:{_serverPort}...");
                 await _client.ConnectAsync(_serverAddress, _serverPort);
-                Console.WriteLine("[DEBUG] ConnectAsync: TCP-Verbindung hergestellt");
+                LogDebug("ConnectAsync: TCP connection established");
 
                 _stream = _client.GetStream();
                 _reader = new StreamReader(_stream, new UTF8Encoding(false));
                 _writer = new StreamWriter(_stream, new UTF8Encoding(false)) { AutoFlush = true };
-                Console.WriteLine("[DEBUG] ConnectAsync: Stream und Reader/Writer erstellt");
+                LogDebug("ConnectAsync: Stream and reader/writer created");
 
                 var authData = new
                 {
@@ -74,7 +83,7 @@ namespace LicenseSystem.Services
                     licenseKey = _licenseKey
                 };
 
-                //Console.WriteLine("[DEBUG] ConnectAsync: Erstelle AUTH-Nachricht");
+                LogDebug("ConnectAsync: Creating AUTH message");
                 var authMessage = new Message
                 {
                     Type = "AUTH",
@@ -83,95 +92,94 @@ namespace LicenseSystem.Services
                     Timestamp = DateTime.Now
                 };
 
-                //Console.WriteLine("[DEBUG] ConnectAsync: Sende AUTH-Nachricht");
+                LogDebug("ConnectAsync: Sending AUTH message");
                 var serializedMessage = JsonSerializer.Serialize(authMessage);
-                //Console.WriteLine($"[DEBUG] ConnectAsync: Serialisierte Nachricht: {serializedMessage}");
+                LogDebug($"ConnectAsync: Serialized message: {serializedMessage}");
                 await _writer.WriteLineAsync(serializedMessage);
-                //Console.WriteLine("[DEBUG] ConnectAsync: AUTH-Nachricht gesendet");
+                LogDebug("ConnectAsync: AUTH message sent");
 
-                //Console.WriteLine("[DEBUG] ConnectAsync: Warte auf Antwort vom Server");
+                LogDebug("ConnectAsync: Waiting for response from server");
                 var responseJson = await _reader.ReadLineAsync();
-                //Console.WriteLine($"[DEBUG] ConnectAsync: Antwort erhalten: {responseJson}");
+                LogDebug($"ConnectAsync: Response received: {responseJson}");
 
                 if (string.IsNullOrEmpty(responseJson))
                 {
-                    //Console.WriteLine("[DEBUG] ConnectAsync: Leere Antwort vom Server");
+                    LogDebug("ConnectAsync: Empty response from server");
                     CloseConnection();
-                    OnConnectionStatusChanged(false, "Keine Antwort vom Server");
+                    OnConnectionStatusChanged(false, "No response from server");
                     return false;
                 }
 
                 var response = JsonSerializer.Deserialize<Message>(responseJson);
-                //Console.WriteLine($"[DEBUG] ConnectAsync: Antworttyp: {response.Type}, Inhalt: {response.Content}");
+                LogDebug($"ConnectAsync: Response type: {response.Type}, Content: {response.Content}");
 
                 switch (response.Type)
                 {
                     case "AUTH":
-                        //Console.WriteLine("[DEBUG] ConnectAsync: Authentifizierung erfolgreich");
+                        LogDebug("ConnectAsync: Authentication successful");
                         IsConnected = true;
                         _cts = new CancellationTokenSource();
 
-                        //Console.WriteLine("[DEBUG] ConnectAsync: Starte Nachrichtenempfangs-Task");
+                        LogDebug("ConnectAsync: Starting message receiving task");
                         _ = Task.Run(() => ReceiveMessagesAsync(_cts.Token));
 
-                        OnConnectionStatusChanged(true, "Verbindung zum Server hergestellt.");
+                        OnConnectionStatusChanged(true, "Connected to server.");
                         return true;
                     case "DISCONNECT":
-                        //Console.WriteLine($"[DEBUG] ConnectAsync: Authentifizierung fehlgeschlagen: {response.Content}");
+                        LogDebug($"ConnectAsync: Authentication failed: {response.Content}");
                         CloseConnection();
                         OnConnectionStatusChanged(false, response.Content);
                         return false;
                     default:
-                        //Console.WriteLine($"[DEBUG] ConnectAsync: Unerwarteter Antworttyp: {response.Type}");
+                        LogDebug($"ConnectAsync: Unexpected response type: {response.Type}");
                         CloseConnection();
-                        OnConnectionStatusChanged(false, "Unerwartete Antwort vom Server");
+                        OnConnectionStatusChanged(false, "Unexpected response from server");
                         return false;
                 }
             }
             catch (SocketException sockEx)
             {
-                Console.WriteLine(
-                    $"[ERROR] ConnectAsync: Socket-Fehler: {sockEx.Message}, ErrorCode: {sockEx.ErrorCode}");
-                Console.WriteLine($"[ERROR] ConnectAsync: StackTrace: {sockEx.StackTrace}");
+                LogError($"ConnectAsync: Socket error: {sockEx.Message}, ErrorCode: {sockEx.ErrorCode}");
+                LogError($"ConnectAsync: StackTrace: {sockEx.StackTrace}");
                 CloseConnection();
-                OnConnectionStatusChanged(false, $"Verbindungsfehler: {sockEx.Message}");
+                OnConnectionStatusChanged(false, $"Connection error: {sockEx.Message}");
                 return false;
             }
             catch (IOException ioEx)
             {
-                Console.WriteLine($"[ERROR] ConnectAsync: IO-Fehler: {ioEx.Message}");
-                Console.WriteLine($"[ERROR] ConnectAsync: InnerException: {ioEx.InnerException?.Message}");
-                Console.WriteLine($"[ERROR] ConnectAsync: StackTrace: {ioEx.StackTrace}");
+                LogError($"ConnectAsync: IO error: {ioEx.Message}");
+                LogError($"ConnectAsync: InnerException: {ioEx.InnerException?.Message}");
+                LogError($"ConnectAsync: StackTrace: {ioEx.StackTrace}");
                 CloseConnection();
-                OnConnectionStatusChanged(false, $"Fehler bei der Übertragung: {ioEx.Message}");
+                OnConnectionStatusChanged(false, $"Transfer error: {ioEx.Message}");
                 return false;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] ConnectAsync: Allgemeiner Fehler: {ex.Message}");
-                Console.WriteLine($"[ERROR] ConnectAsync: Typ: {ex.GetType().Name}");
-                Console.WriteLine($"[ERROR] ConnectAsync: StackTrace: {ex.StackTrace}");
+                LogError($"ConnectAsync: General error: {ex.Message}");
+                LogError($"ConnectAsync: Type: {ex.GetType().Name}");
+                LogError($"ConnectAsync: StackTrace: {ex.StackTrace}");
                 CloseConnection();
-                OnConnectionStatusChanged(false, $"Verbindungsfehler: {ex.Message}");
+                OnConnectionStatusChanged(false, $"Connection error: {ex.Message}");
                 return false;
             }
 
             return false;
         }
 
-        public async Task DisconnectAsync(string reason = "Client hat die Verbindung getrennt")
+        public async Task DisconnectAsync(string reason = "Client disconnected")
         {
-            //Console.WriteLine($"[DEBUG] DisconnectAsync: Trenne Verbindung. Grund: {reason}");
+            LogDebug($"DisconnectAsync: Disconnecting. Reason: {reason}");
 
             if (!IsConnected)
             {
-                //Console.WriteLine("[DEBUG] DisconnectAsync: Bereits getrennt");
+                LogDebug("DisconnectAsync: Already disconnected");
                 return;
             }
 
             try
             {
-                //Console.WriteLine("[DEBUG] DisconnectAsync: Sende DISCONNECT-Nachricht");
+                LogDebug("DisconnectAsync: Sending DISCONNECT message");
                 await SendMessageAsync(new Message
                 {
                     Type = "DISCONNECT",
@@ -179,11 +187,11 @@ namespace LicenseSystem.Services
                     Sender = _username,
                     Timestamp = DateTime.Now
                 });
-                //Console.WriteLine("[DEBUG] DisconnectAsync: DISCONNECT-Nachricht gesendet");
+                LogDebug("DisconnectAsync: DISCONNECT message sent");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] DisconnectAsync: Fehler beim Senden der Trennungsnachricht: {ex.Message}");
+                LogError($"DisconnectAsync: Error sending disconnect message: {ex.Message}");
             }
             finally
             {
@@ -193,18 +201,17 @@ namespace LicenseSystem.Services
 
         private void CloseConnection()
         {
-            //Console.WriteLine("[DEBUG] CloseConnection: Schließe Verbindung");
+            LogDebug("CloseConnection: Closing connection");
             IsConnected = false;
 
             try
             {
                 _cts?.Cancel();
-                //Console.WriteLine("[DEBUG] CloseConnection: CancellationToken gesetzt");
+                LogDebug("CloseConnection: CancellationToken set");
             }
             catch (Exception ex)
             {
-                Console.WriteLine(
-                    $"[ERROR] CloseConnection: Fehler beim Abbrechen des CancellationToken: {ex.Message}");
+                LogError($"CloseConnection: Error cancelling CancellationToken: {ex.Message}");
             }
 
             try
@@ -213,43 +220,43 @@ namespace LicenseSystem.Services
                 _writer?.Dispose();
                 _stream?.Dispose();
                 _client?.Close();
-                //Console.WriteLine("[DEBUG] CloseConnection: Ressourcen freigegeben");
+                LogDebug("CloseConnection: Resources released");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] CloseConnection: Fehler beim Freigeben der Ressourcen: {ex.Message}");
+                LogError($"CloseConnection: Error releasing resources: {ex.Message}");
             }
 
-            OnConnectionStatusChanged(false, "Verbindung zum Server getrennt.");
+            OnConnectionStatusChanged(false, "Disconnected from server.");
         }
 
         public async Task SendMessageAsync(Message message)
         {
-            //Console.WriteLine($"[DEBUG] SendMessageAsync: Sende Nachricht vom Typ {message.Type}");
+            LogDebug($"SendMessageAsync: Sending message of type {message.Type}");
 
             if (!IsConnected)
             {
-                //Console.WriteLine("[ERROR] SendMessageAsync: Nicht mit dem Server verbunden.");
-                throw new InvalidOperationException("Nicht mit dem Server verbunden.");
+                LogError("SendMessageAsync: Not connected to server.");
+                throw new InvalidOperationException("Not connected to server.");
             }
 
             try
             {
                 var messageJson = JsonSerializer.Serialize(message);
-                //Console.WriteLine($"[DEBUG] SendMessageAsync: Serialisierte Nachricht: {messageJson}");
+                LogDebug($"SendMessageAsync: Serialized message: {messageJson}");
                 await _writer.WriteLineAsync(messageJson);
-                //Console.WriteLine("[DEBUG] SendMessageAsync: Nachricht gesendet");
+                LogDebug("SendMessageAsync: Message sent");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] SendMessageAsync: Fehler beim Senden der Nachricht: {ex.Message}");
+                LogError($"SendMessageAsync: Error sending message: {ex.Message}");
                 throw;
             }
         }
 
         public async Task SendCommandAsync(string command)
         {
-            Console.WriteLine($"[DEBUG] SendCommandAsync: Sende Befehl: {command}");
+            LogInfo($"SendCommandAsync: Sending command: {command}");
             await SendMessageAsync(new Message
             {
                 Type = "COMMAND",
@@ -261,7 +268,7 @@ namespace LicenseSystem.Services
 
         private async Task<Message> ReadMessageAsync()
         {
-            Console.WriteLine("[DEBUG] ReadMessageAsync: Lese Nachricht vom Server");
+            LogDebug("ReadMessageAsync: Reading message from server");
             var messageJson = await _reader.ReadLineAsync();
             
             if (!string.IsNullOrEmpty(messageJson) && messageJson.StartsWith("?"))
@@ -271,89 +278,106 @@ namespace LicenseSystem.Services
 
             if (string.IsNullOrEmpty(messageJson))
             {
-                //Console.WriteLine("[DEBUG] ReadMessageAsync: Leere Nachricht (null oder leer) vom Server erhalten");
-                throw new IOException("Server hat die Verbindung getrennt.");
+                LogDebug("ReadMessageAsync: Empty message (null or empty) received from server");
+                throw new IOException("Server has disconnected.");
             }
 
-            Console.WriteLine($"[DEBUG] ReadMessageAsync: Nachricht empfangen: {messageJson}");
+            LogDebug($"ReadMessageAsync: Message received: {messageJson}");
             var message = JsonSerializer.Deserialize<Message>(messageJson);
-            Console.WriteLine($"[DEBUG] ReadMessageAsync: Nachricht deserialisiert. Typ: {message!.Type}");
+            LogDebug($"ReadMessageAsync: Message deserialized. Type: {message!.Type}");
             return message;
         }
 
         private async Task ReceiveMessagesAsync(CancellationToken cancellationToken)
         {
-            //Console.WriteLine("[DEBUG] ReceiveMessagesAsync: Starte Nachrichtenempfangsschleife");
+            LogDebug("ReceiveMessagesAsync: Starting message receive loop");
             try
             {
                 while (!cancellationToken.IsCancellationRequested && _client.Connected)
                 {
-                    Console.WriteLine("[DEBUG] ReceiveMessagesAsync: Warte auf Nachricht vom Server");
+                    LogDebug("ReceiveMessagesAsync: Waiting for message from server");
                     try
                     {
                         var message = await ReadMessageAsync();
 
-                        //Console.WriteLine($"[DEBUG] ReceiveMessagesAsync: Nachricht vom Typ {message.Type} empfangen");
+                        LogDebug($"ReceiveMessagesAsync: Message of type {message.Type} received");
                         if (message.Type == "DISCONNECT")
                         {
-                            //Console.WriteLine($"[DEBUG] ReceiveMessagesAsync: Server hat die Verbindung getrennt. Grund: {message.Content}");
+                            LogDebug($"ReceiveMessagesAsync: Server has disconnected. Reason: {message.Content}");
                             CloseConnection();
                             OnConnectionStatusChanged(false, message.Content);
                             break;
                         }
-                        //Console.WriteLine($"[DEBUG] ReceiveMessagesAsync: Löse MessageReceived-Event aus");
+                        LogDebug($"ReceiveMessagesAsync: Triggering MessageReceived event");
                         OnMessageReceived(message);
                     }
                     catch (IOException ioEx)
                     {
-                        Console.WriteLine($"[ERROR] ReceiveMessagesAsync: IO-Fehler: {ioEx.Message}");
-                        Console.WriteLine(
-                            $"[ERROR] ReceiveMessagesAsync: InnerException: {ioEx.InnerException?.Message}");
+                        LogError($"ReceiveMessagesAsync: IO error: {ioEx.Message}");
+                        LogError($"ReceiveMessagesAsync: InnerException: {ioEx.InnerException?.Message}");
                         throw;
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(
-                            $"[ERROR] ReceiveMessagesAsync: Fehler beim Empfangen einer Nachricht: {ex.Message}");
-                        Console.WriteLine($"[ERROR] ReceiveMessagesAsync: Typ: {ex.GetType().Name}");
+                        LogError($"ReceiveMessagesAsync: Error receiving a message: {ex.Message}");
+                        LogError($"ReceiveMessagesAsync: Type: {ex.GetType().Name}");
                         throw;
                     }
                 }
             }
             catch (IOException)
             {
-                Console.WriteLine("[ERROR] ReceiveMessagesAsync: Verbindung zum Server verloren (IOException)");
+                LogError("ReceiveMessagesAsync: Connection to server lost (IOException)");
                 CloseConnection();
-                OnConnectionStatusChanged(false, "Verbindung zum Server verloren.");
+                OnConnectionStatusChanged(false, "Connection to server lost.");
             }
             catch (ObjectDisposedException)
             {
-                Console.WriteLine("[ERROR] ReceiveMessagesAsync: Stream wurde geschlossen (ObjectDisposedException)");
+                LogError("ReceiveMessagesAsync: Stream was closed (ObjectDisposedException)");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] ReceiveMessagesAsync: Allgemeiner Fehler: {ex.Message}");
-                Console.WriteLine($"[ERROR] ReceiveMessagesAsync: Typ: {ex.GetType().Name}");
-                Console.WriteLine($"[ERROR] ReceiveMessagesAsync: StackTrace: {ex.StackTrace}");
+                LogError($"ReceiveMessagesAsync: General error: {ex.Message}");
+                LogError($"ReceiveMessagesAsync: Type: {ex.GetType().Name}");
+                LogError($"ReceiveMessagesAsync: StackTrace: {ex.StackTrace}");
                 CloseConnection();
-                OnConnectionStatusChanged(false, $"Fehler: {ex.Message}");
+                OnConnectionStatusChanged(false, $"Error: {ex.Message}");
             }
             finally
             {
-                //Console.WriteLine("[DEBUG] ReceiveMessagesAsync: Nachrichtenempfangsschleife beendet");
+                LogDebug("ReceiveMessagesAsync: Message receive loop ended");
             }
         }
 
         private void OnMessageReceived(Message message)
         {
-            //Console.WriteLine($"[DEBUG] OnMessageReceived: Event für Nachricht vom Typ {message.Type}");
+            LogDebug($"OnMessageReceived: Event for message of type {message.Type}");
             MessageReceived?.Invoke(this, new MessageReceivedEventArgs(message));
         }
 
         private void OnConnectionStatusChanged(bool isConnected, string reason)
         {
-            //Console.WriteLine($"[DEBUG] OnConnectionStatusChanged: Event für Status {isConnected}, Grund: {reason}");
+            LogDebug($"OnConnectionStatusChanged: Event for status {isConnected}, Reason: {reason}");
             ConnectionStatusChanged?.Invoke(this, new ConnectionStatusEventArgs(isConnected, reason));
+        }
+        
+        // Logging methods that check debug mode
+        private void LogDebug(string message)
+        {
+            if (_isDebug)
+            {
+                Debug.WriteLine($"[DEBUG] {message}");
+            }
+        }
+
+        private void LogInfo(string message)
+        {
+            Console.WriteLine($"[INFO] {message}");
+        }
+
+        private void LogError(string message)
+        {
+            Console.WriteLine($"[ERROR] {message}");
         }
     }
 }
