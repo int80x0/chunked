@@ -1,7 +1,4 @@
-﻿using System;
-using System.IO;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Text;
 using Microsoft.Extensions.Configuration;
 
 namespace Server.Utils
@@ -15,21 +12,21 @@ namespace Server.Utils
             Warning,
             Error
         }
-        
+
         private readonly object _lock = new object();
         private readonly string _logFilePath;
         private readonly LogLevel _minLevel;
         private readonly bool _logToConsole;
         private readonly bool _logToFile;
-        
+
         private static readonly ConsoleColor[] LevelColors =
         [
-            ConsoleColor.Gray,      
-            ConsoleColor.Green,     
-            ConsoleColor.Yellow,    
+            ConsoleColor.Gray,
+            ConsoleColor.Green,
+            ConsoleColor.Yellow,
             ConsoleColor.Red
         ];
-        
+
         public Logger(IConfiguration config = null)
         {
             if (config != null)
@@ -37,7 +34,7 @@ namespace Server.Utils
                 _logToConsole = config.GetValue("Logging:LogToConsole", true);
                 _logToFile = config.GetValue("Logging:LogToFile", true);
                 _logFilePath = config.GetValue<string>("Logging:LogFilePath", "logs/chunkybot.log");
-                
+
                 var configLevel = config.GetValue<string>("Logging:MinimumLevel", "Info");
                 _minLevel = Enum.TryParse<LogLevel>(configLevel, true, out var level) ? level : LogLevel.Info;
             }
@@ -56,7 +53,7 @@ namespace Server.Utils
                 Directory.CreateDirectory(logDirectory);
             }
         }
-        
+
         public void Debug(string message)
         {
             if (_minLevel <= LogLevel.Debug)
@@ -64,7 +61,7 @@ namespace Server.Utils
                 LogMessage(LogLevel.Debug, message);
             }
         }
-        
+
         public void Info(string message)
         {
             if (_minLevel <= LogLevel.Info)
@@ -72,7 +69,7 @@ namespace Server.Utils
                 LogMessage(LogLevel.Info, message);
             }
         }
-        
+
         public void Warning(string message)
         {
             if (_minLevel <= LogLevel.Warning)
@@ -80,7 +77,7 @@ namespace Server.Utils
                 LogMessage(LogLevel.Warning, message);
             }
         }
-        
+
         public void Error(string message)
         {
             if (_minLevel <= LogLevel.Error)
@@ -88,44 +85,45 @@ namespace Server.Utils
                 LogMessage(LogLevel.Error, message);
             }
         }
-        
+
         private void LogMessage(LogLevel level, string message)
         {
             var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
             var formattedMessage = $"[{timestamp}] [{level.ToString().ToUpper()}] {message}";
-            
+
             if (_logToConsole)
             {
                 WriteToConsole(level, formattedMessage);
             }
-            
+
             if (_logToFile)
             {
                 Task.Run(() => WriteToFileAsync(formattedMessage));
             }
         }
-        
+
         private void WriteToConsole(LogLevel level, string message)
         {
             lock (_lock)
             {
-                var oldColor = Console.ForegroundColor;
-                
-                Console.ForegroundColor = LevelColors[(int)level];
-                
-                Console.WriteLine(message);
-                
-                Console.ForegroundColor = oldColor;
+                var oldColor = System.Console.ForegroundColor;
+
+                System.Console.ForegroundColor = LevelColors[(int)level];
+
+                System.Console.WriteLine(message);
+
+                System.Console.ForegroundColor = oldColor;
             }
         }
-        
+
         private async Task WriteToFileAsync(string message)
         {
             try
             {
                 message += Environment.NewLine;
 
-                await using var fileStream = new FileStream(_logFilePath, FileMode.Append, FileAccess.Write, FileShare.Read);
+                await using var fileStream =
+                    new FileStream(_logFilePath, FileMode.Append, FileAccess.Write, FileShare.Read);
                 await using var writer = new StreamWriter(fileStream, Encoding.UTF8);
                 await writer.WriteAsync(message);
             }
@@ -133,10 +131,10 @@ namespace Server.Utils
             {
                 lock (_lock)
                 {
-                    var oldColor = Console.ForegroundColor;
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"Fehler beim Schreiben ins Logfile: {ex.Message}");
-                    Console.ForegroundColor = oldColor;
+                    var oldColor = System.Console.ForegroundColor;
+                    System.Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine($"Fehler beim Schreiben ins Logfile: {ex.Message}");
+                    System.Console.ForegroundColor = oldColor;
                 }
             }
         }

@@ -10,12 +10,12 @@ namespace Server.Discord
     {
         private readonly DiscordSocketClient _client;
         private readonly LicenseServer _licenseServer;
-        private readonly IConfiguration _config;
         private readonly Logger _logger;
 
-        private Timer _presenceTimer;
+        private Timer? _presenceTimer;
         private int _currentPresenceIndex = 0;
-        private DateTime _startTime;
+        private int _currentStatusIndex = 0;
+        private readonly DateTime _startTime;
         
         private readonly TimeSpan _updateInterval;
 
@@ -27,11 +27,10 @@ namespace Server.Discord
         {
             _client = client;
             _licenseServer = licenseServer;
-            _config = config;
             _logger = logger;
             
             _updateInterval = TimeSpan.FromSeconds(
-                _config.GetValue("Discord:PresenceUpdateIntervalSeconds", 60));
+                config.GetValue("Discord:PresenceUpdateIntervalSeconds", 60));
 
             _startTime = DateTime.Now;
         }
@@ -58,34 +57,58 @@ namespace Server.Discord
             try
             {
                 _currentPresenceIndex = (_currentPresenceIndex + 1) % 4;
-
-                Game activity;
-                switch (_currentPresenceIndex)
-                {
-                    case 0:
-                        var onlineUsers = _licenseServer.GetOnlineUsers().Count;
-                        activity = new Game($"{onlineUsers} Benutzer online", ActivityType.Watching);
-                        break;
-
-                    case 1:
-                        var totalUsers = _licenseServer.GetAllUsers().Count;
-                        activity = new Game($"{totalUsers} registrierte Benutzer", ActivityType.Watching);
-                        break;
-
-                    case 3:
-                    default:
-                        var uptime = DateTime.Now - _startTime;
-                        activity = new Game($"Uptime: {uptime.Days}d {uptime.Hours}h {uptime.Minutes}m");
-                        break;
-                }
+                var activity = GetNextActivity();
                 
+                _currentStatusIndex = (_currentStatusIndex + 1) % 3;
+                var status = GetNextStatus();
+                
+                await _client.SetStatusAsync(status);
                 await _client.SetActivityAsync(activity);
-                _logger.Debug($"Presence aktualisiert: {activity.Name}");
+                
+                _logger.Debug($"Presence aktualisiert: Status={status}, Activity={activity.Name}");
             }
             catch (Exception ex)
             {
                 _logger.Error($"Fehler beim Aktualisieren der Presence: {ex.Message}");
             }
+        }
+
+        private global::Discord.Game GetNextActivity()
+        {
+            switch (_currentPresenceIndex)
+            {
+                case 0:
+                    var onlineUsers = _licenseServer.GetOnlineUsers().Count;
+                    if (onlineUsers == 0)
+                        return new global::Discord.Game("user activity", ActivityType.Watching);
+            
+                    string userText = onlineUsers == 1 ? "user" : "users";
+                    return new global::Discord.Game($"over {onlineUsers} {userText}", ActivityType.Watching);
+
+
+                case 1:
+                    var totalUsers = _licenseServer.GetAllUsers().Count;
+                    return new global::Discord.Game($"{totalUsers} registered licenses", ActivityType.Watching);
+
+                case 2:
+                    var uptime = DateTime.Now - _startTime;
+                    return new global::Discord.Game($"since: {uptime.Days}d {uptime.Hours}h {uptime.Minutes}m");
+                
+                case 3:
+                default:
+                    return new global::Discord.Game("license server", ActivityType.Watching);
+            }
+        }
+
+        private UserStatus GetNextStatus()
+        {
+            return _currentStatusIndex switch
+            {
+                0 => UserStatus.Online,
+                1 => UserStatus.DoNotDisturb,
+                2 => UserStatus.Idle,
+                _ => UserStatus.Online
+            };
         }
     }
 }
