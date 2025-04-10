@@ -25,19 +25,26 @@ namespace Server.Server
             _logger.Debug("ServerHandler initialized");
         }
         
-        private void OnClientConnected(object sender, ClientEventArgs args)
+        private async void OnClientConnected(object sender, ClientEventArgs args)
         {
-            _logger.Info($"Client connected: {args.Username} (ID: {args.ClientId})");
-            
             try
             {
-                
-                _logger.Debug($"Client {args.Username} connected successfully");
+                _logger.Info($"Client connected: {args.Username} (ID: {args.ClientId})");
+            
+                try
+                {
+                    await Task.Delay(1000);
+                    _logger.Debug($"Client {args.Username} connected successfully");
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"Error sending welcome message: {ex.Message}");
+                    _logger.Debug($"Stack trace: {ex.StackTrace}");
+                }
             }
-            catch (Exception ex)
+            catch (Exception e)
             {
-                _logger.Error($"Error sending welcome message: {ex.Message}");
-                _logger.Debug($"Stack trace: {ex.StackTrace}");
+                throw;
             }
         }
         

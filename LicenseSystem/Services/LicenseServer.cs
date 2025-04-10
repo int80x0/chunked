@@ -12,6 +12,13 @@ namespace LicenseSystem.Services
         public string Username { get; } = username;
     }
 
+    public class ClientMessageEventArgs(string clientId, string username, Message message) : EventArgs
+    {
+        public string ClientId { get; } = clientId;
+        public string Username { get; } = username;
+        public Message Message { get; } = message;
+    }
+
     public enum LogLevel
     {
         Debug,
@@ -22,10 +29,9 @@ namespace LicenseSystem.Services
 
     public sealed class LicenseServer
     {
-        
         private readonly LogLevel _minLogLevel;
-        
-        
+
+
         private TcpListener _server;
         private readonly int _port;
         private readonly string _usersFilePath;
@@ -35,6 +41,7 @@ namespace LicenseSystem.Services
 
         public event EventHandler<ClientEventArgs> ClientConnected;
         public event EventHandler<ClientEventArgs> ClientDisconnected;
+        public event EventHandler<ClientMessageEventArgs> ClientMessageReceived;
 
         public LicenseServer(int port, string usersFilePath, LogLevel minLogLevel = LogLevel.Info)
         {
@@ -44,16 +51,17 @@ namespace LicenseSystem.Services
             _connectedClients = new Dictionary<string, TcpClient>();
             _isRunning = false;
             _minLogLevel = minLogLevel;
-            
-            
+
+
             Console.WriteLine($"DIAGNOSTIC: LicenseServer created with LogLevel: {_minLogLevel}");
 
-            
+
             LoadUsers();
-            LogInfo($"LicenseServer constructor completed. Port: {port}, UsersFile: {usersFilePath}, LogLevel: {_minLogLevel}");
+            LogInfo(
+                $"LicenseServer constructor completed. Port: {port}, UsersFile: {usersFilePath}, LogLevel: {_minLogLevel}");
         }
 
-        
+
         public void Start()
         {
             if (_isRunning)
@@ -71,11 +79,11 @@ namespace LicenseSystem.Services
 
                 LogInfo($"Server successfully started on {IPAddress.Any}:{_port}");
 
-                
+
                 Task.Run(AcceptClients);
                 LogDebug("AcceptClients task started");
 
-                
+
                 Task.Run(MaintenanceTask);
                 LogDebug("MaintenanceTask started");
             }
@@ -86,7 +94,7 @@ namespace LicenseSystem.Services
             }
         }
 
-        
+
         public void Stop()
         {
             if (!_isRunning)
@@ -104,7 +112,7 @@ namespace LicenseSystem.Services
             LogInfo("Server successfully stopped");
         }
 
-        
+
         private async Task AcceptClients()
         {
             LogDebug("AcceptClients loop started");
@@ -125,7 +133,7 @@ namespace LicenseSystem.Services
                     LogError($"Error accepting client: {ex.Message}");
                     LogDebug($"StackTrace: {ex.StackTrace}");
 
-                    
+
                     await Task.Delay(1000);
                 }
             }
@@ -133,7 +141,7 @@ namespace LicenseSystem.Services
             LogDebug("AcceptClients loop ended");
         }
 
-        
+
         private async Task HandleClient(TcpClient client)
         {
             var clientId = Guid.NewGuid().ToString();
@@ -147,9 +155,9 @@ namespace LicenseSystem.Services
             {
                 LogDebug($"Client {clientId}: Waiting for authentication message...");
 
-                
+
                 var readTask = reader.ReadLineAsync();
-                var timeoutTask = Task.Delay(10000); 
+                var timeoutTask = Task.Delay(10000);
 
                 await Task.WhenAny(readTask, timeoutTask);
 
@@ -174,7 +182,7 @@ namespace LicenseSystem.Services
                         if (authMessage.Type != "AUTH")
                         {
                             LogDebug($"Client {clientId}: First message is not an AUTH message");
-                            
+
                             SendMessage(writer, new Message
                             {
                                 Type = "DISCONNECT",
@@ -186,14 +194,15 @@ namespace LicenseSystem.Services
                             return;
                         }
 
-                        
+
                         LogDebug($"Client {clientId}: Parsing authentication data. Content: {authMessage.Content}");
                         var authData = JsonSerializer.Deserialize<Dictionary<string, string>>(authMessage.Content);
                         var username = authData["username"];
                         var licenseKey = authData["licenseKey"];
-                        LogDebug($"Client {clientId}: Authentication data - Username: {username}, LicenseKey: {licenseKey}");
+                        LogDebug(
+                            $"Client {clientId}: Authentication data - Username: {username}, LicenseKey: {licenseKey}");
 
-                        
+
                         LogDebug($"Client {clientId}: Checking license...");
                         var endpoint = client.Client.RemoteEndPoint?.ToString() ?? "Unknown";
                         var authResult = AuthenticateUser(clientId, username, licenseKey, endpoint);
@@ -202,7 +211,7 @@ namespace LicenseSystem.Services
                         if (!authResult)
                         {
                             LogDebug($"Client {clientId}: Authentication failed");
-                            
+
                             SendMessage(writer, new Message
                             {
                                 Type = "DISCONNECT",
@@ -214,18 +223,18 @@ namespace LicenseSystem.Services
                             return;
                         }
 
-                        
+
                         LogDebug($"Client {clientId}: Adding client to list");
                         lock (_connectedClients)
                         {
                             _connectedClients.Add(clientId, client);
                         }
 
-                        
+
                         LogDebug($"Client {clientId}: Triggering ClientConnected event");
                         OnClientConnected(clientId, username);
 
-                        
+
                         LogDebug($"Client {clientId}: Sending success notification");
                         SendMessage(writer, new Message
                         {
@@ -235,7 +244,9 @@ namespace LicenseSystem.Services
                             Timestamp = DateTime.Now
                         });
 
-                        
+                        await Task.Delay(500);
+
+
                         LogDebug($"Client {clientId}: Starting main loop for messages");
                         while (_isRunning && client.Connected)
                         {
@@ -245,12 +256,12 @@ namespace LicenseSystem.Services
                             if (messageJson == null)
                             {
                                 LogDebug($"Client {clientId}: Client has disconnected (null message)");
-                                break; 
+                                break;
                             }
 
                             LogDebug($"Client {clientId}: Message received: {messageJson}");
 
-                            
+
                             var message = JsonSerializer.Deserialize<Message>(messageJson);
                             LogDebug($"Client {clientId}: Processing message of type {message.Type}");
                             await ProcessMessage(message, clientId);
@@ -282,13 +293,11 @@ namespace LicenseSystem.Services
             }
             finally
             {
-                
                 LogDebug($"Client {clientId}: Cleaning up client resources");
                 lock (_connectedClients)
                 {
                     if (_connectedClients.ContainsKey(clientId))
                     {
-                        
                         var user = _users.FirstOrDefault(u => u.ClientId == clientId);
                         if (user != null)
                         {
@@ -297,7 +306,7 @@ namespace LicenseSystem.Services
                             user.ClientId = null;
                             SaveUsers();
 
-                            
+
                             OnClientDisconnected(clientId, user.Username);
                         }
 
@@ -317,7 +326,7 @@ namespace LicenseSystem.Services
             }
         }
 
-        
+
         private async Task ProcessMessage(Message message, string clientId)
         {
             LogDebug($"ProcessMessage: Message received: {message.Type} from {clientId}");
@@ -326,13 +335,19 @@ namespace LicenseSystem.Services
             {
                 case "COMMAND":
                     LogDebug($"ProcessMessage: Processing COMMAND from {clientId}: {message.Content}");
-                    
-                    
+
+                    var user2 = _users.FirstOrDefault(u => u.ClientId == clientId);
+                    if (user2 != null)
+                    {
+                        ClientMessageReceived?.Invoke(this,
+                            new ClientMessageEventArgs(clientId, user2.Username, message));
+                    }
+
                     break;
 
                 case "DISCONNECT":
                     LogDebug($"ProcessMessage: Client {clientId} wants to disconnect");
-                    
+
                     lock (_connectedClients)
                     {
                         if (_connectedClients.TryGetValue(clientId, out TcpClient client))
@@ -341,7 +356,7 @@ namespace LicenseSystem.Services
                             client.Close();
                             _connectedClients.Remove(clientId);
 
-                            
+
                             var user = _users.FirstOrDefault(u => u.ClientId == clientId);
                             if (user != null)
                             {
@@ -350,7 +365,7 @@ namespace LicenseSystem.Services
                                 user.ClientId = null;
                                 SaveUsers();
 
-                                
+
                                 OnClientDisconnected(clientId, user.Username);
                             }
                         }
@@ -364,21 +379,20 @@ namespace LicenseSystem.Services
             }
         }
 
-        
+
         private bool AuthenticateUser(string clientId, string username, string licenseKey, string ipAddress)
         {
             LogDebug($"AuthenticateUser: Authenticating user {username} with license {licenseKey}");
             lock (_users)
             {
-                
                 var user = _users.FirstOrDefault(u => u.LicenseKey == licenseKey);
                 LogDebug($"AuthenticateUser: User found: {user != null}");
 
-                
+
                 if (user == null)
                 {
                     LogDebug($"AuthenticateUser: New user, checking license key");
-                    
+
                     if (!IsValidLicenseKey(licenseKey))
                     {
                         LogDebug($"AuthenticateUser: Invalid license key: {licenseKey}");
@@ -393,8 +407,8 @@ namespace LicenseSystem.Services
                         FirstLogin = DateTime.Now,
                         LastLogin = DateTime.Now,
                         LicenseKey = licenseKey,
-                        LicenseExpiration = DateTime.Now.AddDays(30), 
-                        RateLimit = 100, 
+                        LicenseExpiration = DateTime.Now.AddDays(30),
+                        RateLimit = 100,
                         IsOnline = true,
                         ClientId = clientId
                     };
@@ -405,18 +419,18 @@ namespace LicenseSystem.Services
                 else
                 {
                     LogDebug($"AuthenticateUser: Existing user found, checking license");
-                    
+
                     if (user.LicenseExpiration < DateTime.Now)
                     {
                         LogDebug($"AuthenticateUser: License expired on {user.LicenseExpiration}");
                         return false;
                     }
 
-                    
+
                     if (user.IsOnline)
                     {
                         LogDebug($"AuthenticateUser: User is already online with ClientId {user.ClientId}");
-                        
+
                         if (!string.IsNullOrEmpty(user.ClientId) && user.ClientId != clientId)
                         {
                             LogDebug($"AuthenticateUser: Disconnecting old client {user.ClientId}");
@@ -425,16 +439,16 @@ namespace LicenseSystem.Services
                         }
                     }
 
-                    
+
                     LogDebug($"AuthenticateUser: Updating user data for {username}");
-                    user.Username = username; 
+                    user.Username = username;
                     user.IP = ipAddress;
                     user.LastLogin = DateTime.Now;
                     user.IsOnline = true;
                     user.ClientId = clientId;
                 }
 
-                
+
                 LogDebug($"AuthenticateUser: Saving updated user data");
                 SaveUsers();
 
@@ -442,19 +456,19 @@ namespace LicenseSystem.Services
             }
         }
 
-        
+
         private bool IsValidLicenseKey(string licenseKey)
         {
             LogDebug($"IsValidLicenseKey: Checking license key: {licenseKey}");
-            
-            
+
+
             if (string.IsNullOrEmpty(licenseKey) || licenseKey.Length != 20)
             {
                 LogDebug($"IsValidLicenseKey: Invalid length: {licenseKey?.Length ?? 0}");
                 return false;
             }
 
-            
+
             if (!licenseKey.StartsWith("LICS-"))
             {
                 LogDebug($"IsValidLicenseKey: Doesn't start with LICS-");
@@ -465,7 +479,7 @@ namespace LicenseSystem.Services
             return true;
         }
 
-        
+
         private void SendMessage(StreamWriter writer, Message message)
         {
             LogDebug($"SendMessage: Sending message of type {message.Type}");
@@ -494,7 +508,7 @@ namespace LicenseSystem.Services
             ClientDisconnected?.Invoke(this, new ClientEventArgs(clientId, username));
         }
 
-        
+
         public void BroadcastMessage(string content, string messageType = "NOTIFICATION")
         {
             LogInfo($"BroadcastMessage: Sending broadcast message: {content}");
@@ -516,7 +530,8 @@ namespace LicenseSystem.Services
                 {
                     try
                     {
-                        StreamWriter writer = new StreamWriter(client.GetStream(), new UTF8Encoding(false)) { AutoFlush = true };
+                        StreamWriter writer = new StreamWriter(client.GetStream(), new UTF8Encoding(false))
+                            { AutoFlush = true };
                         writer.WriteLine(messageJson);
                     }
                     catch (Exception ex)
@@ -527,7 +542,7 @@ namespace LicenseSystem.Services
             }
         }
 
-        
+
         public void SendMessageToClient(string clientId, string content, string messageType = "NOTIFICATION")
         {
             LogInfo($"SendMessageToClient: Sending message to client {clientId}: {content}");
@@ -563,7 +578,7 @@ namespace LicenseSystem.Services
             }
         }
 
-        
+
         public void DisconnectClient(string clientId, string reason)
         {
             LogInfo($"DisconnectClient: Disconnecting client {clientId}. Reason: {reason}");
@@ -577,7 +592,6 @@ namespace LicenseSystem.Services
 
                 try
                 {
-                    
                     LogDebug($"DisconnectClient: Sending disconnect message");
                     var writer = new StreamWriter(client.GetStream(), Encoding.UTF8) { AutoFlush = true };
                     SendMessage(writer, new Message
@@ -588,12 +602,12 @@ namespace LicenseSystem.Services
                         Timestamp = DateTime.Now
                     });
 
-                    
+
                     LogDebug($"DisconnectClient: Closing connection");
                     client.Close();
                     _connectedClients.Remove(clientId);
 
-                    
+
                     var user = _users.FirstOrDefault(u => u.ClientId == clientId);
                     if (user != null)
                     {
@@ -603,7 +617,7 @@ namespace LicenseSystem.Services
                         user.ClientId = null;
                         SaveUsers();
 
-                        
+
                         OnClientDisconnected(clientId, username);
                     }
 
@@ -616,7 +630,7 @@ namespace LicenseSystem.Services
             }
         }
 
-        
+
         public void DisconnectAllClients(string reason)
         {
             LogInfo($"DisconnectAllClients: Disconnecting all clients. Reason: {reason}");
@@ -630,7 +644,7 @@ namespace LicenseSystem.Services
             }
         }
 
-        
+
         private void LoadUsers()
         {
             LogDebug($"LoadUsers: Loading user data from {_usersFilePath}");
@@ -648,7 +662,7 @@ namespace LicenseSystem.Services
                          throw new InvalidOperationException("Deserialization resulted in null");
                 LogInfo($"LoadUsers: {_users.Count} users loaded");
 
-                
+
                 foreach (var user in _users)
                 {
                     user.IsOnline = false;
@@ -665,7 +679,7 @@ namespace LicenseSystem.Services
             }
         }
 
-        
+
         private void SaveUsers()
         {
             LogDebug($"SaveUsers: Saving {_users.Count} users to {_usersFilePath}");
@@ -688,17 +702,17 @@ namespace LicenseSystem.Services
             }
         }
 
-        
+
         private async Task MaintenanceTask()
         {
             LogDebug("MaintenanceTask: Task started");
             while (_isRunning)
             {
                 LogDebug("MaintenanceTask: Performing maintenance");
-                
+
                 CheckExpiredLicenses();
 
-                
+
                 LogDebug("MaintenanceTask: Waiting 1 hour until next check");
                 await Task.Delay(TimeSpan.FromHours(1));
             }
@@ -706,7 +720,7 @@ namespace LicenseSystem.Services
             LogDebug("MaintenanceTask: Task ended");
         }
 
-        
+
         private void CheckExpiredLicenses()
         {
             LogDebug("CheckExpiredLicenses: Checking for expired licenses");
@@ -717,13 +731,14 @@ namespace LicenseSystem.Services
 
                 foreach (var user in expiredUsers)
                 {
-                    LogDebug($"CheckExpiredLicenses: License for {user.Username} has expired. Expiration date: {user.LicenseExpiration}");
+                    LogDebug(
+                        $"CheckExpiredLicenses: License for {user.Username} has expired. Expiration date: {user.LicenseExpiration}");
                     DisconnectClient(user.ClientId, "Your license has expired.");
                 }
             }
         }
 
-        
+
         public bool ExtendLicense(string licenseKey, int days)
         {
             LogInfo($"ExtendLicense: Extending license {licenseKey} by {days} days");
@@ -741,7 +756,7 @@ namespace LicenseSystem.Services
                 LogDebug($"ExtendLicense: License extended from {oldExpiration} to {user.LicenseExpiration}");
                 SaveUsers();
 
-                
+
                 if (user.IsOnline && !string.IsNullOrEmpty(user.ClientId))
                 {
                     LogDebug($"ExtendLicense: Notifying user {user.Username} about license extension");
@@ -752,7 +767,7 @@ namespace LicenseSystem.Services
                 return true;
             }
         }
-        
+
         public List<User> GetOnlineUsers()
         {
             lock (_users)
@@ -760,7 +775,7 @@ namespace LicenseSystem.Services
                 return _users.Where(u => u.IsOnline).ToList();
             }
         }
-        
+
         public List<User> GetAllUsers()
         {
             lock (_users)
@@ -768,8 +783,8 @@ namespace LicenseSystem.Services
                 return _users.ToList();
             }
         }
-        
-        
+
+
         private void LogDebug(string message)
         {
             if (_minLogLevel <= LogLevel.Debug)
