@@ -61,6 +61,9 @@ namespace Server
 
             await botHandler.StopAsync();
             licenseServer.Stop();
+            
+            var messageHandler = _services.GetRequiredService<MessageHandler>();
+            logger.Info("MessageHandler initialized.");
 
             logger.Info("Server shutdown completed. Goodbye!");
         }

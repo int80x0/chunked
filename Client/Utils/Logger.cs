@@ -37,7 +37,7 @@ namespace Client.Utils
                 }
             }
 
-            Console.WriteLine(
+            System.Console.WriteLine(
                 $"DIAGNOSTIC: Logger initialized with Level: {_minLevel}, Console: {LogToConsole}, File: {LogToFile}");
         }
 
@@ -58,7 +58,7 @@ namespace Client.Utils
                 }
             }
 
-            Console.WriteLine(
+            System.Console.WriteLine(
                 $"DIAGNOSTIC: Logger initialized with Level: {_minLevel}, Console: {LogToConsole}, File: {LogToFile}");
         }
 
@@ -135,8 +135,8 @@ namespace Client.Utils
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Markup error: {ex.Message}");
-                Console.WriteLine(message);
+                System.Console.WriteLine($"Markup error: {ex.Message}");
+                System.Console.WriteLine(message);
             }
         }
 
@@ -155,7 +155,7 @@ namespace Client.Utils
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error writing to log file: {ex.Message}");
+                System.Console.WriteLine($"Error writing to log file: {ex.Message}");
             }
         }
     }

@@ -17,6 +17,7 @@ namespace Server.Server
         private readonly GameInfoService _gameInfoService;
         private readonly ChunkManager _chunkManager;
         private readonly ulong _forumId;
+        private readonly int _maxMessagesToFetch;
 
         public DownloadInfoGenerator(
             IConfiguration config,
@@ -30,6 +31,9 @@ namespace Server.Server
             _chunkManager = chunkManager;
             
             _forumId = _config.GetValue<ulong>("Forum:GamesForumId", 0);
+            _maxMessagesToFetch = _config.GetValue("Game:MaxMessagesToFetch", 2000);
+            
+            _logger.Debug($"DownloadInfoGenerator initialized with MaxMessagesToFetch: {_maxMessagesToFetch}");
         }
 
         public async Task<DownloadInfo> GenerateDownloadInfoAsync(GameInfo gameInfo)
@@ -59,7 +63,8 @@ namespace Server.Server
                     return null;
                 }
                 
-                IEnumerable<IMessage> allMessages;
+                List<IMessage> allMessages = new List<IMessage>();
+                IMessageChannel messageChannel;
                 
                 // Get messages from forum or text channel
                 if (channel is SocketForumChannel forumChannel)
@@ -76,27 +81,37 @@ namespace Server.Server
                     
                     _logger.Info($"Found thread for {gameInfo.Title} (ID: {gameThread.Id})");
                     
-                    var messageChannel = gameThread as IMessageChannel;
+                    messageChannel = gameThread as IMessageChannel;
                     if (messageChannel == null)
                     {
                         _logger.Error("Failed to cast thread to message channel");
                         return null;
                     }
                     
-                    allMessages = await messageChannel.GetMessagesAsync(200).FlattenAsync();
+                    // Use pagination to get more messages
+                    allMessages = await GetAllMessagesAsync(messageChannel);
                 }
                 else if (channel is IMessageChannel textChannel)
                 {
-                    var messages = await textChannel.GetMessagesAsync(200).FlattenAsync();
-                    allMessages = messages.Where(m => 
-                        m.Content?.Contains(gameInfo.Title, StringComparison.OrdinalIgnoreCase) == true || 
-                        m.Embeds.Any(e => e.Title?.Contains(gameInfo.Title, StringComparison.OrdinalIgnoreCase) == true));
+                    messageChannel = textChannel;
+                    
+                    // Use pagination to get all messages first
+                    var messages = await GetAllMessagesAsync(textChannel);
+                    
+                    // Then filter for relevant ones
+                    allMessages = messages
+                        .Where(m => 
+                            m.Content?.Contains(gameInfo.Title, StringComparison.OrdinalIgnoreCase) == true || 
+                            m.Embeds.Any(e => e.Title?.Contains(gameInfo.Title, StringComparison.OrdinalIgnoreCase) == true))
+                        .ToList();
                 }
                 else
                 {
                     _logger.Error($"Channel with ID {_forumId} is neither a forum nor a text channel");
                     return null;
                 }
+                
+                _logger.Info($"Fetched {allMessages.Count} messages to search through");
                 
                 // Find file ID from version embed
                 string fileId = null;
@@ -200,6 +215,23 @@ namespace Server.Server
                     return null;
                 }
                 
+                // Check if all expected chunks are present
+                var expectedChunkCount = chunks.Max(c => c.Index) + 1;
+                if (chunks.Count < expectedChunkCount)
+                {
+                    _logger.Warning($"Missing chunks detected. Found {chunks.Count} chunks, but expected {expectedChunkCount}");
+                    
+                    // Identify missing chunks
+                    var missingIndices = Enumerable.Range(0, expectedChunkCount)
+                        .Except(chunks.Select(c => c.Index))
+                        .ToList();
+                    
+                    if (missingIndices.Count > 0)
+                    {
+                        _logger.Warning($"Missing chunk indices: {string.Join(", ", missingIndices)}");
+                    }
+                }
+                
                 _logger.Info($"Successfully extracted {chunks.Count} chunks");
                 
                 // Create download info
@@ -220,6 +252,69 @@ namespace Server.Server
                 _logger.Error($"Error generating download info: {ex.Message}");
                 _logger.Debug($"Stack trace: {ex.StackTrace}");
                 return null;
+            }
+        }
+        
+        private async Task<List<IMessage>> GetAllMessagesAsync(IMessageChannel channel)
+        {
+            const int messagesPerBatch = 100; // Discord API limit
+            var messages = new List<IMessage>();
+            ulong? lastMessageId = null;
+            int totalMessagesFetched = 0;
+            
+            try
+            {
+                _logger.Debug($"Starting paginated message fetch from channel (limit: {_maxMessagesToFetch})");
+                
+                while (totalMessagesFetched < _maxMessagesToFetch)
+                {
+                    IEnumerable<IMessage> batch;
+                    
+                    if (lastMessageId == null)
+                    {
+                        // First batch
+                        batch = await channel.GetMessagesAsync(limit: messagesPerBatch).FlattenAsync();
+                    }
+                    else
+                    {
+                        // Subsequent batches - start from last message ID
+                        batch = await channel.GetMessagesAsync(lastMessageId.Value, Direction.Before, messagesPerBatch).FlattenAsync();
+                    }
+                    
+                    var batchArray = batch.ToArray();
+                    if (batchArray.Length == 0)
+                    {
+                        _logger.Debug("No more messages to fetch");
+                        break; // No more messages
+                    }
+                    
+                    messages.AddRange(batchArray);
+                    totalMessagesFetched += batchArray.Length;
+                    
+                    // Update last message ID for next batch
+                    lastMessageId = batchArray.Last().Id;
+                    
+                    _logger.Debug($"Fetched batch of {batchArray.Length} messages, total so far: {totalMessagesFetched}");
+                    
+                    // Add a small delay to avoid hitting rate limits
+                    await Task.Delay(500);
+                    
+                    // If we got fewer messages than requested, we've reached the end
+                    if (batchArray.Length < messagesPerBatch)
+                    {
+                        _logger.Debug("Reached end of message history");
+                        break;
+                    }
+                }
+                
+                _logger.Info($"Finished paginated message fetch, got {messages.Count} messages");
+                return messages;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Error during paginated message fetch: {ex.Message}");
+                _logger.Debug($"Stack trace: {ex.StackTrace}");
+                return messages; // Return what we've got so far
             }
         }
         

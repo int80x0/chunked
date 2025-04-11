@@ -1,4 +1,5 @@
 using Client.Commands;
+using Client.Console;
 using Client.Utils;
 using LicenseSystem.Services;
 using Microsoft.Extensions.Configuration;
@@ -17,7 +18,7 @@ internal abstract partial class Program
     {
         try
         {
-            Console.WriteLine("Starting Chunky Client application - initializing...");
+            System.Console.WriteLine("Starting Chunky Client application - initializing...");
             
             _config = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
@@ -33,7 +34,7 @@ internal abstract partial class Program
             if (!string.IsNullOrEmpty(logLevelStr) && Enum.TryParse<LogLevel>(logLevelStr, true, out var configLevel))
             {
                 logLevel = configLevel;
-                Console.WriteLine($"Using log level from configuration: {logLevel}");
+                System.Console.WriteLine($"Using log level from configuration: {logLevel}");
             }
             else
             {
@@ -42,10 +43,10 @@ internal abstract partial class Program
                 #else
                 logLevel = LogLevel.Info;
                 #endif
-                Console.WriteLine($"Using default log level: {logLevel}");
+                System.Console.WriteLine($"Using default log level: {logLevel}");
             }
             
-            Console.WriteLine($"Logging to console: {logToConsole}, Logging to file: {logToFile}, File path: {logFilePath}");
+            System.Console.WriteLine($"Logging to console: {logToConsole}, Logging to file: {logToFile}, File path: {logFilePath}");
             
             _logger = new Logger(logLevel, logFilePath, logToConsole, logToFile);
             
@@ -55,13 +56,13 @@ internal abstract partial class Program
             }
             catch (Exception ex) {
                 _logger.Error($"Error creating decorated header: {ex.Message}");
-                Console.WriteLine("=== CHUNKY CLIENT ===");
+                System.Console.WriteLine("=== CHUNKY CLIENT ===");
             }
             
             var serverAddress = _config.GetValue<string>("Server:Address", null!);
             if (string.IsNullOrEmpty(serverAddress))
             {
-                serverAddress = AnsiConsole.Ask<string>("Server-Adresse:", "localhost");
+                serverAddress = AnsiConsole.Ask<string>("Server address:", "localhost");
             }
             else
             {
@@ -72,7 +73,7 @@ internal abstract partial class Program
             var serverPort = _config.GetValue<int>("Server:Port", 0);
             if (serverPort <= 0)
             {
-                serverPort = AnsiConsole.Ask<int>("Server-Port:", 25599);
+                serverPort = AnsiConsole.Ask<int>("Server port:", 25599);
             }
             else
             {
@@ -86,14 +87,14 @@ internal abstract partial class Program
             client.MessageReceived += OnMessageReceived;
             client.ConnectionStatusChanged += OnConnectionStatusChanged;
 
-            var username = AnsiConsole.Ask<string>("Benutzername:", "User");
+            var username = AnsiConsole.Ask<string>("Username:", "User");
             var licenseKey = AnsiConsole.Prompt(
-                new TextPrompt<string>("Lizenzschlüssel:")
+                new TextPrompt<string>("License key:")
                     .PromptStyle("green")
                     .Secret());
 
             await AnsiConsole.Status()
-                .Start("Verbinde zum Server...", async ctx =>
+                .Start("Connecting to server...", async ctx =>
                 {
                     _logger.Info($"Attempting to connect with username: {username}");
                     var connected = await client.ConnectAsync(username, licenseKey);
@@ -101,7 +102,7 @@ internal abstract partial class Program
                     if (!connected)
                     {
                         _logger.Error("Connection failed");
-                        AnsiConsole.MarkupLine("[red]Verbindung fehlgeschlagen. Bitte überprüfe deine Anmeldedaten.[/]");
+                        AnsiConsole.MarkupLine("[red]Connection failed. Please check your credentials.[/]");
                         return;
                     }
                 });
@@ -110,89 +111,29 @@ internal abstract partial class Program
             {
                 _logger.Info("Successfully connected to server");
                 
-                var downloadCommand = new DownloadCommand(client, _logger);
+                // Initialize command handler
+                var commandHandler = new ConsoleCommandHandler(_logger);
+                
+                // Register commands
+                CommandRegistration.RegisterConsoleCommands(commandHandler, client, _logger);
 
-                AnsiConsole.MarkupLine("[green]Verbunden![/] Verfügbare Befehle:");
-                AnsiConsole.MarkupLine("  [blue]/download <game_id>[/] - Lade ein Spiel herunter");
-                AnsiConsole.MarkupLine("  [blue]/list[/] - Zeige verfügbare Spiele");
-                AnsiConsole.MarkupLine("  [blue]/help[/] - Zeige Hilfe");
-                AnsiConsole.MarkupLine("  [blue]/exit[/] - Beende die Anwendung");
-                AnsiConsole.WriteLine();
-
-                var running = true;
-                while (running && client.IsConnected)
-                {
-                    var input = AnsiConsole.Ask<string>(">");
-
-                    if (string.IsNullOrEmpty(input))
-                        continue;
-
-                    var parts = MyRegex().Matches(input)
-                        .Cast<Match>()
-                        .Select(m => m.Value.Trim('"'))
-                        .ToArray();
-
-                    if (parts.Length == 0)
-                        continue;
-
-                    var commandName = parts[0].ToLower();
-                    var args = parts.Skip(1).ToArray();
-
-                    try
-                    {
-                        _logger.Debug($"Processing command: {commandName} with {args.Length} arguments");
-                        
-                        switch (commandName)
-                        {
-                            case "/download":
-                                await downloadCommand.ExecuteAsync(args);
-                                break;
-
-                            case "/list":
-                                _logger.Info("Listing available games");
-                                AnsiConsole.MarkupLine("[cyan]Verfügbare Spiele:[/]");
-                                AnsiConsole.MarkupLine("  [green]20952[/] - Grand Theft Auto V");
-                                AnsiConsole.MarkupLine("  [green]2282[/] - The Witcher 3: Wild Hunt");
-                                break;
-
-                            case "/help":
-                                _logger.Debug("Showing help menu");
-                                AnsiConsole.MarkupLine("[cyan]Hilfe:[/]");
-                                AnsiConsole.MarkupLine("  [blue]/download <game_id>[/] - Lade ein Spiel herunter");
-                                AnsiConsole.MarkupLine("  [blue]/list[/] - Zeige verfügbare Spiele");
-                                AnsiConsole.MarkupLine("  [blue]/help[/] - Zeige Hilfe");
-                                AnsiConsole.MarkupLine("  [blue]/exit[/] - Beende die Anwendung");
-                                break;
-
-                            case "/exit":
-                                _logger.Info("Exiting application");
-                                running = false;
-                                await client.DisconnectAsync("Benutzer hat die Anwendung beendet");
-                                break;
-
-                            default:
-                                _logger.Warning($"Unknown command: {commandName}");
-                                AnsiConsole.MarkupLine("[yellow]Unbekannter Befehl. Gib '/help' ein, um alle verfügbaren Befehle anzuzeigen.[/]");
-                                break;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Error($"Error executing command: {ex.Message}");
-                        AnsiConsole.MarkupLine($"[red]Fehler: {ex.Message}[/]");
-                    }
-                }
+                // Start command handler
+                await commandHandler.StartAsync();
             }
 
             _logger.Info("Application shutting down");
-            AnsiConsole.MarkupLine("[yellow]Drücke eine Taste zum Beenden...[/]");
-            Console.ReadKey();
+            if (client.IsConnected)
+            {
+                await client.DisconnectAsync("User exited the application");
+            }
+            
+            AnsiConsole.MarkupLine("[yellow]Press any key to exit...[/]");
+            System.Console.ReadKey();
         }
         catch (Exception ex)
         {
-            
-            Console.WriteLine($"CRITICAL ERROR: {ex.Message}");
-            Console.WriteLine(ex.StackTrace);
+            System.Console.WriteLine($"CRITICAL ERROR: {ex.Message}");
+            System.Console.WriteLine(ex.StackTrace);
             
             if (_logger != null)
             {
@@ -200,8 +141,8 @@ internal abstract partial class Program
                 if (ex.StackTrace != null) _logger.Error(ex.StackTrace);
             }
             
-            Console.WriteLine("Press any key to exit...");
-            Console.ReadKey();
+            System.Console.WriteLine("Press any key to exit...");
+            System.Console.ReadKey();
         }
     }
 
@@ -218,14 +159,13 @@ internal abstract partial class Program
                 return;
             }
             
-            
             _logger?.Debug($"Message received: {message.Type} from {message.Sender}");
             AnsiConsole.MarkupLine($"[{Markup.Escape(message.Timestamp.ToString("HH:mm:ss"))}] [cyan]{Markup.Escape(message.Sender)}:[/] {Markup.Escape(message.Content)}");
         }
         catch (Exception ex)
         {
             _logger?.Error($"Error processing message: {ex.Message}");
-            Console.WriteLine($"Message: {message.Sender}: {message.Content}");
+            System.Console.WriteLine($"Message: {message.Sender}: {message.Content}");
         }
     }
 
@@ -247,7 +187,7 @@ internal abstract partial class Program
         catch (Exception ex)
         {
             _logger?.Error($"Error handling connection status: {ex.Message}");
-            Console.WriteLine($"Connection status: {e.IsConnected}, Reason: {e.Reason}");
+            System.Console.WriteLine($"Connection status: {e.IsConnected}, Reason: {e.Reason}");
         }
     }
 
